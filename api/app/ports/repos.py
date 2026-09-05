@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from app.domain.models import Project, Prompt, User
+from app.domain.models import Project, Prompt, User, Version
 
 
 class AuditRepo(Protocol):
@@ -55,3 +55,16 @@ class PromptRepo(Protocol):
         tags: list[str] | None = None,
         archived: bool | None = None,
     ) -> Prompt: ...
+
+
+class VersionRepo(Protocol):
+    async def create(
+        self,
+        project_id: str,
+        prompt_id: str,
+        *,
+        text: str,
+        note: str | None,
+        technique: str | None,
+        created_by: str,
+    ) -> Version: ...

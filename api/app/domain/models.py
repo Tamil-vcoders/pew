@@ -52,3 +52,13 @@ class Prompt:
     archived: bool
     best_score: float | None
     latest_version: int
+
+
+@dataclass(frozen=True)
+class Version:
+    n: int
+    text: str
+    note: str | None
+    technique: str | None
+    created_by: str
+    created_at: datetime | None

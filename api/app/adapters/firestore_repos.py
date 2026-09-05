@@ -6,7 +6,7 @@ from typing import Any
 
 from google.cloud import firestore
 
-from app.domain.models import Project, ProjectCfg, Prompt, User
+from app.domain.models import Project, ProjectCfg, Prompt, User, Version
 from app.ports.repos import AuditRepo
 
 
@@ -310,3 +310,65 @@ class FirestorePromptRepo:
         await _run(transaction)
         snap = await ref.get()
         return _prompt_from_snap(project_id, snap)
+
+
+class FirestoreVersionRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _prompt_ref(self, project_id: str, prompt_id: str) -> firestore.AsyncDocumentReference:
+        ref: firestore.AsyncDocumentReference = (
+            self._client.collection("projects").document(project_id)
+            .collection("prompts").document(prompt_id)
+        )
+        return ref
+
+    def _versions_collection(
+        self, project_id: str, prompt_id: str
+    ) -> firestore.AsyncCollectionReference:
+        collection: firestore.AsyncCollectionReference = (
+            self._prompt_ref(project_id, prompt_id).collection("versions")
+        )
+        return collection
+
+    async def create(
+        self,
+        project_id: str,
+        prompt_id: str,
+        *,
+        text: str,
+        note: str | None,
+        technique: str | None,
+        created_by: str,
+    ) -> Version:
+        prompt_ref = self._prompt_ref(project_id, prompt_id)
+        versions = self._versions_collection(project_id, prompt_id)
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> tuple[int, datetime]:
+            prompt_snap = await _snapshot(transaction, prompt_ref)
+            if not prompt_snap.exists:
+                raise LookupError("Prompt not found")
+            current = prompt_snap.to_dict() or {}
+            next_n = int(current.get("latestVersion", 0)) + 1
+            created_at = datetime.now(UTC)
+            transaction.set(
+                versions.document(str(next_n)),
+                {
+                    "n": next_n,
+                    "text": text,
+                    "note": note,
+                    "technique": technique,
+                    "createdBy": created_by,
+                    "createdAt": created_at,
+                },
+            )
+            transaction.update(prompt_ref, {"latestVersion": next_n})
+            return next_n, created_at
+
+        transaction = self._client.transaction()
+        n, created_at = await _run(transaction)
+        return Version(
+            n=n, text=text, note=note, technique=technique,
+            created_by=created_by, created_at=created_at,
+        )

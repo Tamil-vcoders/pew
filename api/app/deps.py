@@ -12,7 +12,7 @@ from google.cloud import firestore
 from app.adapters.firestore_repos import FirestoreAuditRepo, FirestoreUserRepo
 from app.config import get_settings
 from app.domain.models import User
-from app.ports.repos import AuditRepo, ProjectRepo, PromptRepo, UserRepo
+from app.ports.repos import AuditRepo, ProjectRepo, PromptRepo, UserRepo, VersionRepo
 
 _firebase_app: firebase_admin.App | None = None
 _firestore_client: firestore.AsyncClient | None = None
@@ -90,6 +90,14 @@ def get_prompt_repo(client: firestore.AsyncClient = Depends(get_firestore_client
     from app.adapters.firestore_repos import FirestorePromptRepo
 
     return FirestorePromptRepo(client)
+
+
+def get_version_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> VersionRepo:
+    # Local import avoids a circular-import ordering concern between deps.py and
+    # firestore_repos.py; same pattern as get_project_repo/get_prompt_repo above.
+    from app.adapters.firestore_repos import FirestoreVersionRepo
+
+    return FirestoreVersionRepo(client)
 
 
 async def current_user(
