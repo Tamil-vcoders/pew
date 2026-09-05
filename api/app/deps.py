@@ -93,11 +93,11 @@ def get_prompt_repo(client: firestore.AsyncClient = Depends(get_firestore_client
 
 
 async def current_user(
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     users: UserRepo = Depends(get_user_repo),
 ) -> User:
     get_firebase_app()
-    if not authorization.startswith("Bearer "):
+    if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing bearer token")
     try:
         decoded = fb_auth.verify_id_token(authorization.removeprefix("Bearer "))
@@ -110,7 +110,7 @@ async def current_user(
 
 def require(min_role: str) -> Callable[[User], Awaitable[User]]:
     async def guard(user: User = Depends(current_user)) -> User:
-        if ROLE_LEVEL[user.role] < ROLE_LEVEL[min_role]:
+        if ROLE_LEVEL.get(user.role, -1) < ROLE_LEVEL[min_role]:
             raise HTTPException(403, f"Requires {min_role} role")
         return user
 

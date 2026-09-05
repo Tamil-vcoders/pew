@@ -232,6 +232,22 @@ class FirestorePromptRepo:
             # `async_query.py` source directly (installed firebase-admin 7.5.0 /
             # google-cloud-firestore 2.30.0) and by this test suite passing live against the
             # Firestore emulator.
+            # NOTE ON RACE SAFETY (not full): this uniqueness check is a *query*
+            # (`.where(...)`), not a read of one specific, already-existing keyed document.
+            # Firestore transactions only get a real optimistic-concurrency precondition on
+            # documents they actually *read*; a query that matches zero documents creates no
+            # precondition on documents that don't exist yet, so it does not "lock" the name
+            # the way `_snapshot()`'s single-doc reads do (e.g. `meta/bootstrap` in
+            # `FirestoreUserRepo.get_or_bootstrap`, which reads one specific doc and so *does*
+            # get a real precondition). Two `create()` calls for the exact same name, racing
+            # concurrently, can both observe an empty `clashes` result and both commit,
+            # producing a genuine duplicate. This check is still worth having — it prevents
+            # the overwhelmingly common case (a name that already exists by the time this
+            # runs) — it just is not a hard uniqueness guarantee under true concurrency. A
+            # fully race-safe version would replace this query with a keyed marker document
+            # (e.g. `projects/{project_id}/promptNames/{nameLower}` written via
+            # `transaction.create()`, which fails at commit if the doc already exists) instead
+            # of a query; deferred as a follow-up rather than risking this already-tested path.
             clash_query = collection.where("nameLower", "==", name.strip().lower()).limit(1)
             clashes = [snap async for snap in await transaction.get(clash_query)]
             if clashes:
@@ -239,7 +255,7 @@ class FirestorePromptRepo:
             transaction.set(
                 ref,
                 {
-                    "name": name,
+                    "name": name.strip(),
                     "nameLower": name.strip().lower(),
                     "tags": tags,
                     "archived": False,
@@ -251,7 +267,7 @@ class FirestorePromptRepo:
         transaction = self._client.transaction()
         await _run(transaction)
         return Prompt(
-            id=ref.id, project_id=project_id, name=name, tags=tags,
+            id=ref.id, project_id=project_id, name=name.strip(), tags=tags,
             archived=False, best_score=None, latest_version=0,
         )
 
@@ -270,13 +286,18 @@ class FirestorePromptRepo:
         @firestore.async_transactional
         async def _run(transaction: firestore.AsyncTransaction) -> None:
             if name is not None:
-                clash_query = collection.where("nameLower", "==", name.strip().lower()).limit(1)
+                # limit(2), not 1: if the single hit under limit(1) happened to be this same
+                # prompt (renaming "Draft" to itself, say), a real second same-named document
+                # would go undetected. limit(2) guarantees at least one *other* document shows
+                # up in `clashes` when one genuinely exists, so the `any(...)` check below has
+                # something real to inspect even when the prompt's own doc is the first hit.
+                clash_query = collection.where("nameLower", "==", name.strip().lower()).limit(2)
                 clashes = [snap async for snap in await transaction.get(clash_query)]
                 if any(snap.id != prompt_id for snap in clashes):
                     raise ValueError(f"A prompt named '{name}' already exists in this project")
             patch: dict[str, Any] = {}
             if name is not None:
-                patch["name"] = name
+                patch["name"] = name.strip()
                 patch["nameLower"] = name.strip().lower()
             if tags is not None:
                 patch["tags"] = tags

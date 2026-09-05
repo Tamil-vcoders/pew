@@ -40,11 +40,14 @@ async def test_bootstrap_writes_an_audit_log_entry_for_the_first_admin_only() ->
 
 
 def test_missing_bearer_token_is_rejected() -> None:
-    # No Authorization header at all fails FastAPI's own request validation (422) before
-    # current_user's body ever runs; a present-but-malformed header is what reaches the
-    # 401 branch, covered by test_malformed_bearer_token_is_rejected below.
+    # `current_user` declares `authorization` as an *optional* header (`Header(default=None)`)
+    # specifically so a header-less request reaches current_user's own body and gets a clean
+    # 401 "Missing bearer token" here, rather than FastAPI's own request validation rejecting
+    # it with a 422 that leaks the parameter name in a raw Pydantic validation error body. A
+    # present-but-malformed header hits the same 401 branch, covered by
+    # test_malformed_bearer_token_is_rejected below.
     resp = client.get("/me")
-    assert resp.status_code == 422
+    assert resp.status_code == 401
 
 
 def test_malformed_bearer_token_is_rejected() -> None:

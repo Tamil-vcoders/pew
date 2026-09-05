@@ -1,6 +1,6 @@
 # api/app/routes/prompts.py
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.deps import ROLE_LEVEL, current_user, get_prompt_repo, require
 from app.domain.models import Prompt, User
@@ -10,12 +10,12 @@ router = APIRouter(prefix="/projects/{project_id}/prompts", tags=["prompts"])
 
 
 class CreatePromptBody(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=200)
     tags: list[str] = []
 
 
 class UpdatePromptBody(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
     tags: list[str] | None = None
     archived: bool | None = None
 
@@ -58,7 +58,7 @@ async def update_prompt(
     repo: PromptRepo = Depends(get_prompt_repo),
 ) -> dict[str, object]:
     min_role = "maintainer" if body.archived is not None else "contributor"
-    if ROLE_LEVEL[user.role] < ROLE_LEVEL[min_role]:
+    if ROLE_LEVEL.get(user.role, -1) < ROLE_LEVEL[min_role]:
         raise HTTPException(403, f"Requires {min_role} role")
 
     existing = await repo.get(project_id, prompt_id)
