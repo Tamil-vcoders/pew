@@ -1,6 +1,6 @@
 // web/tests/types.test.ts
 import { describe, expect, it } from "vitest";
-import { ProjectSchema, PromptSchema, UserSchema } from "../shared/types";
+import { ProjectSchema, PromptSchema, SuggestionSchema, UserSchema, VersionSchema } from "../shared/types";
 
 describe("UserSchema", () => {
   it("parses a /me response", () => {
@@ -39,5 +39,34 @@ describe("PromptSchema", () => {
     });
     expect(parsed.bestScore).toBeNull();
     expect(parsed.tags).toEqual(["triage", "prod"]);
+  });
+});
+
+describe("VersionSchema", () => {
+  it("parses a version with a null note/technique/createdAt", () => {
+    const parsed = VersionSchema.parse({
+      n: 1, text: "Summarize the ticket.", note: null, technique: null,
+      createdBy: "u1", createdAt: null,
+    });
+    expect(parsed.n).toBe(1);
+  });
+
+  it("parses a version carrying a technique", () => {
+    const parsed = VersionSchema.parse({
+      n: 2, text: "v2", note: "Applied: Clear and direct", technique: "Clear and direct",
+      createdBy: "u1", createdAt: "2026-09-06T00:00:00.000Z",
+    });
+    expect(parsed.technique).toBe("Clear and direct");
+  });
+});
+
+describe("SuggestionSchema", () => {
+  it("parses a suggestion", () => {
+    const parsed = SuggestionSchema.parse({
+      ruleId: "clear", technique: "Clear and direct",
+      evidence: 'Hedging language ("try to") leaves the task underspecified.',
+      oldText: "Try to help.", newText: "Help.",
+    });
+    expect(parsed.ruleId).toBe("clear");
   });
 });

@@ -44,3 +44,22 @@ export const PromptSchema = z.object({
   latestVersion: z.number(),
 });
 export type Prompt = z.infer<typeof PromptSchema>;
+
+export const VersionSchema = z.object({
+  n: z.number(),
+  text: z.string(),
+  note: z.string().nullable(),
+  technique: z.string().nullable(),
+  createdBy: z.string(),
+  createdAt: z.string().nullable(),
+});
+export type Version = z.infer<typeof VersionSchema>;
+
+export const SuggestionSchema = z.object({
+  ruleId: z.string(),
+  technique: z.string(),
+  evidence: z.string(),
+  oldText: z.string(),
+  newText: z.string(),
+});
+export type Suggestion = z.infer<typeof SuggestionSchema>;
