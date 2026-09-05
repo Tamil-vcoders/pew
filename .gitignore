@@ -21,6 +21,7 @@ build/
 
 # Next.js
 .next/
+*.tsbuildinfo
 
 # Python
 __pycache__/
