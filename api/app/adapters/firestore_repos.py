@@ -6,7 +6,7 @@ from typing import Any
 
 from google.cloud import firestore
 
-from app.domain.models import User
+from app.domain.models import Project, ProjectCfg, User
 from app.ports.repos import AuditRepo
 
 
@@ -115,3 +115,63 @@ class FirestoreUserRepo:
 
         transaction = self._client.transaction()
         return await _run(transaction)
+
+
+def _cfg_to_dict(cfg: ProjectCfg) -> dict[str, Any]:
+    return {
+        "target": cfg.target,
+        "maxIter": cfg.max_iter,
+        "budget": cfg.budget,
+        "nSug": cfg.n_sug,
+        "auto": cfg.auto,
+        "weights": cfg.weights,
+        "models": cfg.models,
+    }
+
+
+def _cfg_from_dict(data: dict[str, Any]) -> ProjectCfg:
+    default = ProjectCfg()
+    return ProjectCfg(
+        target=data.get("target", default.target),
+        max_iter=data.get("maxIter", default.max_iter),
+        budget=data.get("budget", default.budget),
+        n_sug=data.get("nSug", default.n_sug),
+        auto=data.get("auto", default.auto),
+        weights=data.get("weights", default.weights),
+        models=data.get("models", default.models),
+    )
+
+
+def _project_from_snap(snap: firestore.DocumentSnapshot) -> Project:
+    data = snap.to_dict() or {}
+    return Project(id=snap.id, name=data.get("name", ""), cfg=_cfg_from_dict(data.get("cfg", {})))
+
+
+class FirestoreProjectRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _collection(self) -> firestore.AsyncCollectionReference:
+        return self._client.collection("projects")
+
+    async def list_all(self) -> list[Project]:
+        return [
+            _project_from_snap(snap)
+            async for snap in self._collection().order_by("name").stream()
+        ]
+
+    async def create(self, name: str) -> Project:
+        ref = self._collection().document()
+        cfg = ProjectCfg()
+        await ref.set({"name": name, "cfg": _cfg_to_dict(cfg)})
+        return Project(id=ref.id, name=name, cfg=cfg)
+
+    async def get(self, project_id: str) -> Project | None:
+        snap = await self._collection().document(project_id).get()
+        return _project_from_snap(snap) if snap.exists else None
+
+    async def rename(self, project_id: str, name: str) -> Project:
+        ref = self._collection().document(project_id)
+        await ref.update({"name": name})
+        snap = await ref.get()
+        return _project_from_snap(snap)
