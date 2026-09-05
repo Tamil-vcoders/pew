@@ -37,7 +37,7 @@ jobs:
           node-version: "20"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: mypy app
+      - run: mypy scripts app
       - run: pytest tests --ignore=tests/integration
       - run: npm install -g firebase-tools
       - run: firebase emulators:exec --project demo-pew-test --only firestore,auth "pytest tests/integration -v"
