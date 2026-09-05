@@ -26,16 +26,24 @@ export function SuggestionsPanel({
 
   useEffect(() => {
     if (!can.edit) return;
+    let cancelled = false;
     const timer = setTimeout(() => {
       suggestionsApi
         .generate(projectId, promptId, draft)
         .then((result) => {
+          if (cancelled) return;
           setSuggestions(result);
           setError(null);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : "Failed to generate suggestions."));
+        .catch((err) => {
+          if (cancelled) return;
+          setError(err instanceof Error ? err.message : "Failed to generate suggestions.");
+        });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [projectId, promptId, draft, can.edit]);
 
   if (!can.edit) {
