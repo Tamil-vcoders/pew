@@ -1,32 +1,20 @@
 // web/app/(workspace)/p/[promptId]/page.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
-import { capabilitiesFor } from "@/shared/rbac/permissions";
+import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
 import { usePromptDoc, workspaceApi } from "@/features/workspace";
+import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/features/editor";
+import { SuggestionsPanel } from "@/features/suggestions";
 import { COLORS } from "@/shared/ui/tokens";
-import type { Prompt } from "@/shared/types";
+import type { Prompt, Suggestion } from "@/shared/types";
 
-function PromptEditor({
-  prompt,
-  projectId,
-  can,
-}: {
-  prompt: Prompt;
-  projectId: string;
-  can: ReturnType<typeof capabilitiesFor>;
-}) {
-  // Local buffer for the in-progress name edit, same reasoning as ProjectTree's project
-  // name input: binding directly to the live Firestore-backed prompt.name makes every
-  // keystroke fire a PATCH and re-render with the stale value until it round-trips. Commit
-  // on blur instead, and re-sync if the name changes from elsewhere. This component only
-  // mounts once `prompt` is loaded (see PromptPage below), so the initial value is the real
-  // name, not a placeholder that gets swapped in a render later.
+function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
+  // Local buffer for the in-progress name edit — binding directly to the live
+  // Firestore-backed prompt.name makes every keystroke fire a PATCH. Commit on blur instead.
   const [nameDraft, setNameDraft] = useState(prompt.name);
-  useEffect(() => {
-    setNameDraft(prompt.name);
-  }, [prompt.name]);
+  useEffect(() => setNameDraft(prompt.name), [prompt.name]);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function commitName() {
@@ -68,16 +56,49 @@ function PromptEditor({
       </div>
       {actionError && <div style={{ fontSize: 11, color: COLORS.bad, marginTop: 6 }}>{actionError}</div>}
       {can.settings && (
-        <button
-          style={{ marginTop: 14 }}
-          onClick={toggleArchived}
-        >
+        <button style={{ marginTop: 14 }} onClick={toggleArchived}>
           {prompt.archived ? "Unarchive" : "Archive"}
         </button>
       )}
-      <p style={{ marginTop: 20, color: COLORS.faint, fontSize: 12 }}>
-        Editor, static validation, and version history land in Phase 2.
-      </p>
+    </div>
+  );
+}
+
+function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
+  const { data: versions, error: versionsError } = useVersionsStream(projectId, prompt.id);
+  const currentVersionText = versions.find((v) => v.n === prompt.latestVersion)?.text ?? "";
+
+  const [draft, setDraft] = useState(currentVersionText);
+  const lastSyncedVersion = useRef(prompt.latestVersion);
+  useEffect(() => {
+    // Reset the draft to the new current version whenever latestVersion actually advances
+    // (a version was just created, via suggestion-apply here or a future run/cycle flow) —
+    // but never clobber in-progress typing on an unrelated re-render.
+    if (prompt.latestVersion !== lastSyncedVersion.current) {
+      setDraft(currentVersionText);
+      lastSyncedVersion.current = prompt.latestVersion;
+    }
+  }, [prompt.latestVersion, currentVersionText]);
+
+  async function applySuggestion(s: Suggestion) {
+    await editorApi.createVersion(projectId, prompt.id, {
+      text: s.newText, note: `Applied: ${s.technique}`, technique: s.technique,
+    });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <PromptHeader prompt={prompt} projectId={projectId} can={can} />
+      <PromptEditor
+        draft={draft}
+        currentVersionText={currentVersionText}
+        readOnly={!can.edit}
+        onChange={setDraft}
+        onRevert={() => setDraft(currentVersionText)}
+      />
+      {versionsError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{versionsError.message}</div>}
+      <VersionHistory versions={versions} currentVersionN={prompt.latestVersion} />
+      <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
     </div>
   );
 }
@@ -91,10 +112,8 @@ export default function PromptPage({ params }: { params: { promptId: string } })
   if (promptError) {
     return <p style={{ color: COLORS.bad }}>{promptError.message}</p>;
   }
-
   if (!prompt) {
     return <p style={{ color: COLORS.muted }}>Loading…</p>;
   }
-
-  return <PromptEditor key={prompt.id} prompt={prompt} projectId={projectId} can={can} />;
+  return <PromptWorkspace key={prompt.id} prompt={prompt} projectId={projectId} can={can} />;
 }
