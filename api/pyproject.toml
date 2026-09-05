@@ -9,11 +9,15 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
+    "firebase-admin>=7.0",
+    "google-cloud-firestore>=2.20",
+    "pydantic-settings>=2.5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-asyncio>=0.24",
     "httpx",
     "ruff",
     "mypy",
@@ -27,6 +31,19 @@ include = ["app*"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# B008 (function call in a default argument) is the idiomatic FastAPI `Depends(...)` pattern
+# used throughout app/deps.py and app/routes/*; FastAPI's own docs instruct users to disable
+# this specific bugbear check for that reason.
+ignore = ["B008"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[[tool.mypy.overrides]]
+module = "firebase_admin.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

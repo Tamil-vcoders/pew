@@ -27,7 +27,13 @@ jobs:
             --region $REGION --allow-unauthenticated \
             --memory 1Gi --timeout 900 --concurrency 40 \
             --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
-            --set-env-vars FIREBASE_PROJECT_ID=$PROJECT,TASKS_QUEUE=cycle-iterations
+            --set-env-vars "FIREBASE_PROJECT_ID=$PROJECT,TASKS_QUEUE=cycle-iterations,CORS_ORIGINS=${{ vars.WEB_URL }}"
+          # NOTE: requires the WEB_URL repository variable (Settings > Secrets and variables >
+          # Actions > Variables) to be set by a human before CORS_ORIGINS takes effect. Until
+          # then vars.WEB_URL is empty, so this deploys CORS_ORIGINS= (empty) — api/app/config.py's
+          # Settings.cors_origin_list splits on "," and filters out blank entries, so an empty
+          # string resolves to [] (no allowed origins), not "allow all" — meaning the web app's
+          # requests will keep failing CORS until WEB_URL is set.
 
       - name: Build and push web
         run: |
