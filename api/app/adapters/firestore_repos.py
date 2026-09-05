@@ -6,7 +6,7 @@ from typing import Any
 
 from google.cloud import firestore
 
-from app.domain.models import Project, ProjectCfg, User
+from app.domain.models import Project, ProjectCfg, Prompt, User
 from app.ports.repos import AuditRepo
 
 
@@ -175,3 +175,117 @@ class FirestoreProjectRepo:
         await ref.update({"name": name})
         snap = await ref.get()
         return _project_from_snap(snap)
+
+
+def _prompt_from_snap(project_id: str, snap: firestore.DocumentSnapshot) -> Prompt:
+    data = snap.to_dict() or {}
+    return Prompt(
+        id=snap.id,
+        project_id=project_id,
+        name=data.get("name", ""),
+        tags=data.get("tags", []),
+        archived=data.get("archived", False),
+        best_score=data.get("bestScore"),
+        latest_version=data.get("latestVersion", 0),
+    )
+
+
+class FirestorePromptRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _collection(self, project_id: str) -> firestore.AsyncCollectionReference:
+        # `AsyncDocumentReference.collection()` (used here to reach the nested "prompts"
+        # subcollection) has no return-type annotation upstream, so mypy would otherwise infer
+        # `Any` and flag a bare `return` as `no-any-return`; the explicit annotation below
+        # narrows it back to the declared type.
+        collection: firestore.AsyncCollectionReference = (
+            self._client.collection("projects").document(project_id).collection("prompts")
+        )
+        return collection
+
+    async def list_by_project(self, project_id: str) -> list[Prompt]:
+        return [
+            _prompt_from_snap(project_id, snap)
+            async for snap in self._collection(project_id).order_by("name").stream()
+        ]
+
+    async def get(self, project_id: str, prompt_id: str) -> Prompt | None:
+        snap = await self._collection(project_id).document(prompt_id).get()
+        return _prompt_from_snap(project_id, snap) if snap.exists else None
+
+    async def create(self, project_id: str, name: str, tags: list[str]) -> Prompt:
+        collection = self._collection(project_id)
+        ref = collection.document()
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> None:
+            # NOTE: unlike a single-document read (see `_snapshot()` above, which works around
+            # `AsyncTransaction.get()`'s broken document-ref branch), a *query* inside a
+            # transaction goes through `AsyncTransaction.get()`'s other branch:
+            # `return ref_or_query.stream(transaction=self, **kwargs)` — no internal `await` on
+            # that line, and `AsyncQuery.stream()` is a plain (non-async) method that eagerly
+            # builds and returns an `AsyncStreamGenerator` rather than a coroutine. So
+            # `await transaction.get(query)` just runs the (non-awaiting) branch body and hands
+            # back that generator — no async-generator-awaited-directly bug here. Confirmed by
+            # reading `google/cloud/firestore_v1/async_transaction.py` /
+            # `async_query.py` source directly (installed firebase-admin 7.5.0 /
+            # google-cloud-firestore 2.30.0) and by this test suite passing live against the
+            # Firestore emulator.
+            clash_query = collection.where("nameLower", "==", name.strip().lower()).limit(1)
+            clashes = [snap async for snap in await transaction.get(clash_query)]
+            if clashes:
+                raise ValueError(f"A prompt named '{name}' already exists in this project")
+            transaction.set(
+                ref,
+                {
+                    "name": name,
+                    "nameLower": name.strip().lower(),
+                    "tags": tags,
+                    "archived": False,
+                    "bestScore": None,
+                    "latestVersion": 0,
+                },
+            )
+
+        transaction = self._client.transaction()
+        await _run(transaction)
+        return Prompt(
+            id=ref.id, project_id=project_id, name=name, tags=tags,
+            archived=False, best_score=None, latest_version=0,
+        )
+
+    async def update(
+        self,
+        project_id: str,
+        prompt_id: str,
+        *,
+        name: str | None = None,
+        tags: list[str] | None = None,
+        archived: bool | None = None,
+    ) -> Prompt:
+        collection = self._collection(project_id)
+        ref = collection.document(prompt_id)
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> None:
+            if name is not None:
+                clash_query = collection.where("nameLower", "==", name.strip().lower()).limit(1)
+                clashes = [snap async for snap in await transaction.get(clash_query)]
+                if any(snap.id != prompt_id for snap in clashes):
+                    raise ValueError(f"A prompt named '{name}' already exists in this project")
+            patch: dict[str, Any] = {}
+            if name is not None:
+                patch["name"] = name
+                patch["nameLower"] = name.strip().lower()
+            if tags is not None:
+                patch["tags"] = tags
+            if archived is not None:
+                patch["archived"] = archived
+            if patch:
+                transaction.update(ref, patch)
+
+        transaction = self._client.transaction()
+        await _run(transaction)
+        snap = await ref.get()
+        return _prompt_from_snap(project_id, snap)

@@ -12,7 +12,7 @@ from google.cloud import firestore
 from app.adapters.firestore_repos import FirestoreAuditRepo, FirestoreUserRepo
 from app.config import get_settings
 from app.domain.models import User
-from app.ports.repos import AuditRepo, ProjectRepo, UserRepo
+from app.ports.repos import AuditRepo, ProjectRepo, PromptRepo, UserRepo
 
 _firebase_app: firebase_admin.App | None = None
 _firestore_client: firestore.AsyncClient | None = None
@@ -84,6 +84,12 @@ def get_project_repo(client: firestore.AsyncClient = Depends(get_firestore_clien
     from app.adapters.firestore_repos import FirestoreProjectRepo
 
     return FirestoreProjectRepo(client)
+
+
+def get_prompt_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> PromptRepo:
+    from app.adapters.firestore_repos import FirestorePromptRepo
+
+    return FirestorePromptRepo(client)
 
 
 async def current_user(
