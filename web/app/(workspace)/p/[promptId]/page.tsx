@@ -6,33 +6,31 @@ import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor } from "@/shared/rbac/permissions";
 import { usePromptDoc, workspaceApi } from "@/features/workspace";
 import { COLORS } from "@/shared/ui/tokens";
+import type { Prompt } from "@/shared/types";
 
-export default function PromptPage({ params }: { params: { promptId: string } }) {
-  const projectId = useSearchParams().get("project") ?? "";
-  const { profile } = useAuth();
-  const can = capabilitiesFor(profile?.role ?? null);
-  const { data: prompt, error: promptError } = usePromptDoc(projectId, params.promptId);
-
+function PromptEditor({
+  prompt,
+  projectId,
+  can,
+}: {
+  prompt: Prompt;
+  projectId: string;
+  can: ReturnType<typeof capabilitiesFor>;
+}) {
   // Local buffer for the in-progress name edit, same reasoning as ProjectTree's project
   // name input: binding directly to the live Firestore-backed prompt.name makes every
   // keystroke fire a PATCH and re-render with the stale value until it round-trips. Commit
-  // on blur instead, and re-sync if the name changes from elsewhere.
-  const [nameDraft, setNameDraft] = useState("");
+  // on blur instead, and re-sync if the name changes from elsewhere. This component only
+  // mounts once `prompt` is loaded (see PromptPage below), so the initial value is the real
+  // name, not a placeholder that gets swapped in a render later.
+  const [nameDraft, setNameDraft] = useState(prompt.name);
   useEffect(() => {
-    setNameDraft(prompt?.name ?? "");
-  }, [prompt?.name]);
+    setNameDraft(prompt.name);
+  }, [prompt.name]);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (promptError) {
-    return <p style={{ color: COLORS.bad }}>{promptError.message}</p>;
-  }
-
-  if (!prompt) {
-    return <p style={{ color: COLORS.muted }}>Loading…</p>;
-  }
-
   async function commitName() {
-    if (!prompt || nameDraft === prompt.name) return;
+    if (nameDraft === prompt.name) return;
     try {
       setActionError(null);
       await workspaceApi.updatePrompt(projectId, prompt.id, { name: nameDraft });
@@ -43,7 +41,6 @@ export default function PromptPage({ params }: { params: { promptId: string } })
   }
 
   async function toggleArchived() {
-    if (!prompt) return;
     try {
       setActionError(null);
       await workspaceApi.updatePrompt(projectId, prompt.id, { archived: !prompt.archived });
@@ -83,4 +80,21 @@ export default function PromptPage({ params }: { params: { promptId: string } })
       </p>
     </div>
   );
+}
+
+export default function PromptPage({ params }: { params: { promptId: string } }) {
+  const projectId = useSearchParams().get("project") ?? "";
+  const { profile } = useAuth();
+  const can = capabilitiesFor(profile?.role ?? null);
+  const { data: prompt, error: promptError } = usePromptDoc(projectId, params.promptId);
+
+  if (promptError) {
+    return <p style={{ color: COLORS.bad }}>{promptError.message}</p>;
+  }
+
+  if (!prompt) {
+    return <p style={{ color: COLORS.muted }}>Loading…</p>;
+  }
+
+  return <PromptEditor key={prompt.id} prompt={prompt} projectId={projectId} can={can} />;
 }
