@@ -154,12 +154,28 @@ describe("usePromptDoc", () => {
     expect(screen.getByText("Exists prompt")).toBeInTheDocument();
   });
 
-  it("returns null when the document does not exist", async () => {
+  it("flips back to null when a subsequent snapshot reports the document no longer exists", async () => {
     render(<PromptDocProbe projectId="j2" promptId="p2" />);
     const path = "projects/j2/prompts/p2";
     const callback = snapshotCallbacksByPath.get(path);
     expect(callback).toBeTypeOf("function");
 
+    // First prove the false-branch isn't just leaving the initial `null` state
+    // untouched: deliver a real, existing document and assert state actually
+    // changed away from the hook's initial value.
+    await act(async () => {
+      callback?.({
+        id: "p2",
+        exists: () => true,
+        data: () => ({ name: "Soon deleted prompt", tags: [], archived: false, bestScore: null, latestVersion: 1 }),
+      });
+    });
+    expect(screen.getByText("Soon deleted prompt")).toBeInTheDocument();
+
+    // Now deliver a "document no longer exists" snapshot (e.g. it was deleted
+    // while being viewed) and assert the render flips back to "none". This
+    // only passes if the false-branch actually calls setPrompt(null); a
+    // missing `else` clause would leave the previous prompt still rendered.
     await act(async () => {
       callback?.({
         id: "p2",
@@ -167,7 +183,7 @@ describe("usePromptDoc", () => {
         data: () => undefined,
       });
     });
-
     expect(screen.getByText("none")).toBeInTheDocument();
+    expect(screen.queryByText("Soon deleted prompt")).not.toBeInTheDocument();
   });
 });
