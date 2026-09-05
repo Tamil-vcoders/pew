@@ -2,7 +2,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-from tests.integration.conftest import auth_headers, create_emulator_user
+from tests.integration.conftest import auth_headers, create_emulator_user, set_user_role
 
 client = TestClient(app)
 
@@ -74,7 +74,15 @@ def test_same_name_is_fine_in_a_different_project() -> None:
     assert resp.status_code == 201
 
 
-def test_contributor_can_rename_and_tag_but_not_archive() -> None:
+def test_administrator_can_rename_a_prompt_and_viewer_cannot_archive() -> None:
+    """NOTE: despite what an earlier version of this test's name/comment claimed, neither
+    case here exercises a genuine contributor token — "contributor" below is the
+    bootstrapped-second-user *viewer*, not a real contributor (Phase 1 has no
+    role-promotion endpoint, so the only way to mint one is a direct Firestore role update,
+    which is what test_genuine_contributor_can_rename_and_tag_but_not_archive below now
+    does). This test only proves: an administrator (>= contributor) may rename, and a
+    viewer (< contributor) may not archive. See that test for the actual contributor/
+    maintainer boundary."""
     admin = _bootstrap("asha@acme.dev")
     project_id = _make_project(admin["id_token"])
     prompt = client.post(
@@ -82,12 +90,8 @@ def test_contributor_can_rename_and_tag_but_not_archive() -> None:
         headers=auth_headers(admin["id_token"]),
     ).json()
 
-    # a contributor (not maintainer) may rename/tag ...
-    contributor = _bootstrap("meera@acme.dev")
-    # contributor is bootstrapped as viewer by default in Phase 1 (no promotion path exists
-    # yet — that's Phase 5). Exercise the boundary using the admin account for the "allowed"
-    # case and a fresh viewer for the "denied" case, which is what devspec's exit criterion
-    # actually requires.
+    viewer = _bootstrap("dev@acme.dev")
+
     ok = client.patch(
         f"/projects/{project_id}/prompts/{prompt['id']}", json={"name": "Renamed"},
         headers=auth_headers(admin["id_token"]),
@@ -95,12 +99,65 @@ def test_contributor_can_rename_and_tag_but_not_archive() -> None:
     assert ok.status_code == 200
     assert ok.json()["name"] == "Renamed"
 
-    # ... but archiving as a mere viewer is refused
+    denied = client.patch(
+        f"/projects/{project_id}/prompts/{prompt['id']}", json={"archived": True},
+        headers=auth_headers(viewer["id_token"]),
+    )
+    assert denied.status_code == 403
+
+
+async def test_genuine_contributor_can_create_and_rename_but_not_archive_a_prompt() -> None:
+    """The real contributor/maintainer boundary, exercised with a genuine contributor-role
+    token (level 1) minted via get_or_bootstrap + a direct Firestore role update — mirroring
+    what the seed script now does for meera. Proves `POST .../prompts` and the rename path
+    are gated at "contributor" (not e.g. "maintainer", which the bootstrapped-admin-only
+    tests above wouldn't catch), and that archiving still requires "maintainer"."""
+    admin = _bootstrap("asha@acme.dev")
+    project_id = _make_project(admin["id_token"])
+    contributor = _bootstrap("meera@acme.dev")
+    await set_user_role(contributor["uid"], "contributor")
+
+    created = client.post(
+        f"/projects/{project_id}/prompts", json={"name": "Draft", "tags": []},
+        headers=auth_headers(contributor["id_token"]),
+    )
+    assert created.status_code == 201
+    prompt = created.json()
+
+    renamed = client.patch(
+        f"/projects/{project_id}/prompts/{prompt['id']}", json={"name": "Renamed"},
+        headers=auth_headers(contributor["id_token"]),
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Renamed"
+
     denied = client.patch(
         f"/projects/{project_id}/prompts/{prompt['id']}", json={"archived": True},
         headers=auth_headers(contributor["id_token"]),
     )
     assert denied.status_code == 403
+
+
+async def test_genuine_maintainer_can_archive_a_prompt() -> None:
+    """The allowed side of the archive boundary with a genuine maintainer-role token (level
+    2), not the bootstrapped administrator (level 3) every other archive test above uses —
+    proving the gate isn't accidentally set to "administrator"."""
+    admin = _bootstrap("asha@acme.dev")
+    project_id = _make_project(admin["id_token"])
+    maintainer = _bootstrap("vikram@acme.dev")
+    await set_user_role(maintainer["uid"], "maintainer")
+
+    prompt = client.post(
+        f"/projects/{project_id}/prompts", json={"name": "Draft", "tags": []},
+        headers=auth_headers(admin["id_token"]),
+    ).json()
+
+    archived = client.patch(
+        f"/projects/{project_id}/prompts/{prompt['id']}", json={"archived": True},
+        headers=auth_headers(maintainer["id_token"]),
+    )
+    assert archived.status_code == 200
+    assert archived.json()["archived"] is True
 
 
 def test_viewer_gets_403_renaming_a_prompt() -> None:

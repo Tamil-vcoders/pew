@@ -43,3 +43,16 @@ def create_emulator_user(email: str, password: str = "correct horse battery stap
 
 def auth_headers(id_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {id_token}"}
+
+
+async def set_user_role(uid: str, role: str) -> None:
+    """Directly set an already-bootstrapped user's Firestore role, bypassing the
+    role-promotion endpoint that doesn't exist yet (Phase 5). Phase 1's bootstrap logic can
+    only ever mint one administrator (the first sign-in) and viewers (every sign-in after
+    that), so this is the only way tests can exercise a genuine contributor/maintainer token
+    against the RBAC boundaries in between — mirrors exactly what the seed script now does
+    for the vikram/meera demo accounts (get_or_bootstrap, then a direct role update)."""
+    from app.deps import get_firestore_client
+
+    fs = await get_firestore_client()
+    await fs.collection("users").document(uid).update({"role": role})
