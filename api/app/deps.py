@@ -28,7 +28,7 @@ def get_firebase_app() -> firebase_admin.App:
     return _firebase_app
 
 
-def get_firestore_client() -> firestore.AsyncClient:
+async def get_firestore_client() -> firestore.AsyncClient:
     """Return the process-wide `firestore.AsyncClient`, rebuilding it if the currently
     running event loop differs from the one its grpc channel was bound to.
 
@@ -42,23 +42,20 @@ def get_firestore_client() -> firestore.AsyncClient:
     their own loop, so this singleton otherwise gets reused across several distinct, dying
     loops within a single test session. Confirmed live against the Firestore emulator.
 
-    When called from a genuinely running event loop (e.g. directly from an `async def`, as
-    `current_user` below does) this detects and heals a stale binding. When called from
-    FastAPI's sync-dependency threadpool (no event loop visible in that worker thread) the
-    check is a no-op and the cached client is returned as-is — harmless, since the real
-    binding only happens later, on the first await, from code that *does* run on the actual
-    request loop.
+    This is declared `async def` (rather than a plain `def`) specifically so that FastAPI
+    evaluates it directly on the caller's real event loop instead of routing it through
+    `run_in_threadpool` (which FastAPI does for any *sync* `Depends()` callable, and which
+    runs in a worker thread with no event loop visible at all — `asyncio.get_running_loop()`
+    raises there, so a plain-`def` version of this function can't reliably detect a stale
+    binding when reached via `Depends(get_firestore_client) -> Depends(get_audit_repo) ->
+    Depends(get_user_repo) -> Depends(current_user)`). Confirmed empirically: FastAPI awaits
+    `async def` dependencies directly, even nested several levels deep under other `Depends()`
+    calls, so `asyncio.get_running_loop()` here always sees the real request loop. Any direct
+    (non-`Depends`) caller — e.g. in tests — must now `await get_firestore_client()`.
     """
     global _firestore_client, _firestore_client_loop_id
-    try:
-        running_loop_id: int | None = id(asyncio.get_running_loop())
-    except RuntimeError:
-        running_loop_id = None
-    if (
-        _firestore_client is not None
-        and running_loop_id is not None
-        and running_loop_id != _firestore_client_loop_id
-    ):
+    running_loop_id = id(asyncio.get_running_loop())
+    if _firestore_client is not None and running_loop_id != _firestore_client_loop_id:
         _firestore_client = None
     if _firestore_client is None:
         get_firebase_app()  # ensure a default app exists before any auth calls happen
@@ -81,7 +78,10 @@ def get_user_repo(
     return FirestoreUserRepo(client, audit)
 
 
-async def current_user(authorization: str = Header(...)) -> User:
+async def current_user(
+    authorization: str = Header(...),
+    users: UserRepo = Depends(get_user_repo),
+) -> User:
     get_firebase_app()
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing bearer token")
@@ -89,16 +89,6 @@ async def current_user(authorization: str = Header(...)) -> User:
         decoded = fb_auth.verify_id_token(authorization.removeprefix("Bearer "))
     except Exception as exc:
         raise HTTPException(401, "Invalid or expired token") from exc
-    # Resolve the repo here, directly, rather than via `Depends(get_user_repo)`: FastAPI runs
-    # sync dependency callables in a worker thread with no event loop visible, so a repo built
-    # that way could be holding a `firestore.AsyncClient` bound to a stale loop (see
-    # get_firestore_client's docstring). This function body runs directly on the real request
-    # loop, so resolving the client here lets get_firestore_client's staleness check do its job
-    # before the first real RPC. get_user_repo/get_audit_repo remain available unchanged for
-    # any other route that wants them via Depends().
-    client = get_firestore_client()
-    audit: AuditRepo = FirestoreAuditRepo(client)
-    users: UserRepo = FirestoreUserRepo(client, audit)
     return await users.get_or_bootstrap(
         uid=decoded["uid"], email=decoded.get("email"), name=decoded.get("name")
     )

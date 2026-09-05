@@ -31,7 +31,7 @@ async def test_bootstrap_writes_an_audit_log_entry_for_the_first_admin_only() ->
     dev = create_emulator_user("dev@acme.dev")
     client.get("/me", headers=auth_headers(dev["id_token"]))
 
-    fs = get_firestore_client()
+    fs = await get_firestore_client()
     docs = [d async for d in fs.collection("auditLogs").stream()]
     assert len(docs) == 1
     entry = docs[0].to_dict()

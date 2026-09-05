@@ -3,7 +3,7 @@ from app.deps import get_firebase_app, get_firestore_client
 
 
 async def test_firestore_client_reaches_emulator() -> None:
-    client = get_firestore_client()
+    client = await get_firestore_client()
     doc_ref = client.collection("wiring_check").document("ping")
     await doc_ref.set({"ok": True})
     snap = await doc_ref.get()
