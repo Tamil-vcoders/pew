@@ -1,0 +1,46 @@
+name: deploy
+on: { push: { branches: [main] } }
+permissions: { contents: read, id-token: write }   # WIF
+env:
+  PROJECT: pew-ideathon
+  REGION: asia-south1
+  REPO: asia-south1-docker.pkg.dev/pew-ideathon/pew
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: deployer@pew-ideathon.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker asia-south1-docker.pkg.dev -q
+
+      - name: Build and push api
+        run: |
+          docker build -t $REPO/api:${{ github.sha }} api/
+          docker push $REPO/api:${{ github.sha }}
+      - name: Deploy api
+        run: |
+          gcloud run deploy pew-api --image $REPO/api:${{ github.sha }} \
+            --region $REGION --allow-unauthenticated \
+            --memory 1Gi --timeout 900 --concurrency 40 \
+            --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
+            --set-env-vars FIREBASE_PROJECT_ID=$PROJECT,TASKS_QUEUE=cycle-iterations
+
+      - name: Build and push web
+        run: |
+          docker build -t $REPO/web:${{ github.sha }} \
+            --build-arg NEXT_PUBLIC_API_URL=${{ vars.API_URL }} \
+            --build-arg NEXT_PUBLIC_FIREBASE_CONFIG='${{ vars.FIREBASE_WEB_CONFIG }}' web/
+          docker push $REPO/web:${{ github.sha }}
+      - name: Deploy web
+        run: |
+          gcloud run deploy pew-web --image $REPO/web:${{ github.sha }} \
+            --region $REGION --allow-unauthenticated --memory 512Mi
+
+      - name: Deploy Firestore rules and indexes
+        run: |
+          npm i -g firebase-tools
+          firebase deploy --only firestore:rules,firestore:indexes --project $PROJECT

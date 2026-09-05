@@ -18,3 +18,16 @@ build/
 # Env
 .env
 .env.local
+
+# Next.js
+.next/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
