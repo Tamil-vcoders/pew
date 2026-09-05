@@ -4,11 +4,13 @@ run more than once — every write is keyed so re-runs don't duplicate data."""
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from firebase_admin import auth as fb_auth
 from google.cloud import firestore
 
+from app.adapters.firestore_repos import FirestoreAuditRepo, FirestoreUserRepo
 from app.deps import get_firebase_app, get_firestore_client
 
 TRIAGE_PROMPT = (
@@ -25,6 +27,11 @@ BLURB_PROMPT = (
     "{{product_notes}}\nBrand voice: {{brand_voice}}\n\nBlurb:"
 )
 
+# Order matters: asha MUST be seeded first. She is the one who goes through
+# `get_or_bootstrap` while `meta/bootstrap` doesn't exist yet, so she becomes the real
+# bootstrapped administrator and writes the sentinel doc, exactly like a real first sign-in
+# would. Everyone after her hits `get_or_bootstrap` with the sentinel already present, so
+# they come back as "viewer" and need their role corrected by a direct update afterward.
 DEMO_ACCOUNTS = [
     ("Asha Rao", "asha@acme.dev", "administrator"),
     ("Vikram Iyer", "vikram@acme.dev", "maintainer"),
@@ -69,19 +76,45 @@ async def _upsert_prompt(fs: firestore.AsyncClient, project_id: str, name: str, 
 
 
 async def _upsert_demo_accounts(fs: firestore.AsyncClient) -> None:
+    """Create the four demo Firebase Auth accounts and their Firestore user docs through the
+    exact same path a real sign-in uses (`FirestoreUserRepo.get_or_bootstrap`) rather than a
+    parallel hand-rolled write. This matters: `get_or_bootstrap` is what writes the
+    `meta/bootstrap` sentinel doc that decides "has an administrator already been assigned?" —
+    a hand-rolled write that only touches `users/{uid}` (the old approach) left that sentinel
+    missing, so the next real person to sign in for the first time would silently become
+    administrator. Routing every demo account through `get_or_bootstrap` — asha first, while
+    the sentinel doesn't exist yet, so she becomes the real bootstrapped administrator — closes
+    that gap using the already-reviewed-and-tested bootstrap transaction itself.
+
+    `get_or_bootstrap` only ever hands out "administrator" (first caller) or "viewer" (every
+    caller after); there is no role-promotion endpoint yet (Phase 5), so vikram/meera get their
+    specific non-viewer role applied via a direct Firestore update afterward — the one place a
+    raw Firestore write for a single field is appropriate in this codebase pre-Phase-5.
+    """
     app = get_firebase_app()
+    audit_repo = FirestoreAuditRepo(fs)
+    user_repo = FirestoreUserRepo(fs, audit_repo)
+
     for name, email, role in DEMO_ACCOUNTS:
         try:
             user_record = fb_auth.get_user_by_email(email, app=app)
         except fb_auth.UserNotFoundError:
             user_record = fb_auth.create_user(email=email, password=DEMO_PASSWORD, display_name=name, app=app)
-        user_ref = fs.collection("users").document(user_record.uid)
-        snap = await user_ref.get()
-        if not snap.exists:
-            await user_ref.set({"name": name, "email": email, "role": role, "createdAt": None})
+
+        await user_repo.get_or_bootstrap(uid=user_record.uid, email=email, name=name)
+        if role != "viewer":
+            # Idempotent: re-running always re-asserts the intended role, whether this is
+            # the first seed (get_or_bootstrap just created the doc as "viewer") or a re-run
+            # (the doc already has the right role and this is a harmless no-op write).
+            await fs.collection("users").document(user_record.uid).update({"role": role})
 
 
-async def run() -> None:
+async def run(*, force: bool = False) -> None:
+    if not force and not os.environ.get("FIRESTORE_EMULATOR_HOST"):
+        raise RuntimeError(
+            "refusing to seed a non-emulator Firestore project; set FIRESTORE_EMULATOR_HOST "
+            "or pass force=True"
+        )
     fs = await get_firestore_client()
 
     support_id = await _upsert_project(fs, "Support automation", DEFAULT_CFG)

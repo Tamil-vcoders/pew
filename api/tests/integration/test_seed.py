@@ -46,3 +46,38 @@ async def test_seed_is_idempotent() -> None:
     fs = await get_firestore_client()
     projects = [d async for d in fs.collection("projects").stream()]
     assert len(projects) == 2
+
+
+async def test_seed_writes_meta_bootstrap_pointing_at_asha() -> None:
+    """Regression guard for the privilege-escalation bug: the seed script must establish
+    the admin bootstrap through the same `get_or_bootstrap` path real logins use, so
+    `meta/bootstrap` actually gets written. If the seed script ever goes back to writing
+    `users/{uid}` docs directly (bypassing `get_or_bootstrap`), this sentinel doc stays
+    missing and the next real sign-in would silently become administrator."""
+    await run_seed()
+    fs = await get_firestore_client()
+
+    bootstrap_snap = await fs.collection("meta").document("bootstrap").get()
+    assert bootstrap_snap.exists
+    bootstrap = bootstrap_snap.to_dict()
+    assert bootstrap["adminAssigned"] is True
+
+    users_by_email = {d.to_dict()["email"]: d.id async for d in fs.collection("users").stream()}
+    assert bootstrap["adminUid"] == users_by_email["asha@acme.dev"]
+
+
+async def test_seed_is_idempotent_for_meta_bootstrap() -> None:
+    """Re-running the seed script must not error, duplicate the sentinel, or reassign the
+    administrator role to someone else."""
+    await run_seed()
+    await run_seed()
+    fs = await get_firestore_client()
+
+    users = {d.to_dict()["email"]: d.to_dict()["role"] async for d in fs.collection("users").stream()}
+    assert users["asha@acme.dev"] == "administrator"
+    assert users["vikram@acme.dev"] == "maintainer"
+    assert users["meera@acme.dev"] == "contributor"
+    assert users["dev@acme.dev"] == "viewer"
+
+    bootstrap_snap = await fs.collection("meta").document("bootstrap").get()
+    assert bootstrap_snap.exists
