@@ -15,6 +15,11 @@ class AuditRepo(Protocol):
         subject: str,
         before: dict[str, Any] | None,
         after: dict[str, Any] | None,
+        # Optional backend-native transaction handle so a caller already inside a transaction
+        # (e.g. FirestoreUserRepo's bootstrap) can stage this write on it instead of committing
+        # separately. Kept as `Any` (rather than e.g. `firestore.AsyncTransaction`) so this port
+        # stays adapter-agnostic; concrete adapters narrow it to their own transaction type.
+        transaction: Any | None = None,
     ) -> None: ...
 
 

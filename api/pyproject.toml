@@ -31,6 +31,12 @@ include = ["app*"]
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# B008 (function call in a default argument) is the idiomatic FastAPI `Depends(...)` pattern
+# used throughout app/deps.py and app/routes/*; FastAPI's own docs instruct users to disable
+# this specific bugbear check for that reason.
+ignore = ["B008"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
