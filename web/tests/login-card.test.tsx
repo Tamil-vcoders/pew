@@ -1,6 +1,6 @@
 // web/tests/login-card.test.tsx
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../features/auth/authService", () => ({
   signIn: vi.fn(),
@@ -18,6 +18,10 @@ beforeEach(() => {
   vi.mocked(authService.signIn).mockReset();
   vi.mocked(authService.signUp).mockReset();
   pushMock.mockReset();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("LoginCard", () => {
@@ -52,9 +56,17 @@ describe("LoginCard", () => {
     expect(await screen.findByText("Wrong password")).toBeInTheDocument();
   });
 
-  it("lists the seeded demo accounts for manual role testing", () => {
+  it("lists the seeded demo accounts for manual role testing when the emulator flag is on", () => {
+    vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "true");
     render(<LoginCard />);
     expect(screen.getByText(/asha@acme\.dev/)).toBeInTheDocument();
     expect(screen.getByText(/dev@acme\.dev/)).toBeInTheDocument();
+  });
+
+  it("does not list the seeded demo accounts (or the shared password) when the emulator flag is not set", () => {
+    vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "false");
+    render(<LoginCard />);
+    expect(screen.queryByText(/asha@acme\.dev/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/correct horse battery staple/)).not.toBeInTheDocument();
   });
 });

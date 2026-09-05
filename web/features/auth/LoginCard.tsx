@@ -13,7 +13,11 @@ type Mode = "signin" | "signup";
 // entirely ("no real authentication happens", prototype.jsx line 569); this build calls
 // real Firebase Auth, so a one-click role switcher would be an actual auth bypass, not a
 // prototype convenience. Instead we list the seeded demo accounts as plain text below the
-// form so a human tester can still sign in manually as any role.
+// form so a human tester can still sign in manually as any role. This list (and the shared
+// password) must never reach a production build, so it's gated behind
+// NEXT_PUBLIC_USE_EMULATOR === "true" below; Next.js inlines NEXT_PUBLIC_* vars at build
+// time, so a real production build (where this is unset/"false") dead-code-eliminates the
+// whole block instead of shipping it.
 const DEMO_ACCOUNTS = [
   "asha@acme.dev (administrator)",
   "vikram@acme.dev (maintainer)",
@@ -129,14 +133,16 @@ export function LoginCard() {
         Continue with Google
       </Btn>
 
-      <div style={{ marginTop: 16, fontSize: 10.5, color: COLORS.faint, lineHeight: 1.7 }}>
-        Seeded demo accounts for role testing (password: &quot;correct horse battery staple&quot;):
-        <ul>
-          {DEMO_ACCOUNTS.map((account) => (
-            <li key={account}>{account}</li>
-          ))}
-        </ul>
-      </div>
+      {process.env.NEXT_PUBLIC_USE_EMULATOR === "true" && (
+        <div style={{ marginTop: 16, fontSize: 10.5, color: COLORS.faint, lineHeight: 1.7 }}>
+          Seeded demo accounts for role testing (password: &quot;correct horse battery staple&quot;):
+          <ul>
+            {DEMO_ACCOUNTS.map((account) => (
+              <li key={account}>{account}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
