@@ -4,8 +4,10 @@ run more than once — every write is keyed so re-runs don't duplicate data."""
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from firebase_admin import auth as fb_auth
+from google.cloud import firestore
 
 from app.deps import get_firebase_app, get_firestore_client
 
@@ -31,7 +33,7 @@ DEMO_ACCOUNTS = [
 ]
 DEMO_PASSWORD = "correct horse battery staple"
 
-DEFAULT_CFG = {
+DEFAULT_CFG: dict[str, Any] = {
     "target": 8, "maxIter": 4, "budget": 0.6, "nSug": 2, "auto": False,
     "weights": {"code": 1, "model": 1, "human": 1},
     "models": {
@@ -41,7 +43,7 @@ DEFAULT_CFG = {
 }
 
 
-async def _upsert_project(fs, name: str, cfg: dict) -> str:
+async def _upsert_project(fs: firestore.AsyncClient, name: str, cfg: dict[str, Any]) -> str:
     existing = [d async for d in fs.collection("projects").where("name", "==", name).limit(1).stream()]
     if existing:
         return str(existing[0].id)
@@ -50,7 +52,7 @@ async def _upsert_project(fs, name: str, cfg: dict) -> str:
     return str(ref.id)
 
 
-async def _upsert_prompt(fs, project_id: str, name: str, tags: list[str], text: str) -> None:
+async def _upsert_prompt(fs: firestore.AsyncClient, project_id: str, name: str, tags: list[str], text: str) -> None:
     collection = fs.collection("projects").document(project_id).collection("prompts")
     existing = [d async for d in collection.where("nameLower", "==", name.lower()).limit(1).stream()]
     if existing:
@@ -66,7 +68,7 @@ async def _upsert_prompt(fs, project_id: str, name: str, tags: list[str], text: 
     })
 
 
-async def _upsert_demo_accounts(fs) -> None:
+async def _upsert_demo_accounts(fs: firestore.AsyncClient) -> None:
     app = get_firebase_app()
     for name, email, role in DEMO_ACCOUNTS:
         try:
@@ -83,9 +85,8 @@ async def run() -> None:
     fs = await get_firestore_client()
 
     support_id = await _upsert_project(fs, "Support automation", DEFAULT_CFG)
-    marketing_cfg = {
+    marketing_cfg: dict[str, Any] = {
         **DEFAULT_CFG, "target": 7.5, "maxIter": 3, "budget": 1.0,
-        "models": {**DEFAULT_CFG["models"], "execution": "gemini-2.5-pro"},
     }
     marketing_id = await _upsert_project(fs, "Marketing copy", marketing_cfg)
 
