@@ -16,8 +16,13 @@ type Mode = "signin" | "signup";
 // form so a human tester can still sign in manually as any role. This list (and the shared
 // password) must never reach a production build, so it's gated behind
 // NEXT_PUBLIC_USE_EMULATOR === "true" below; Next.js inlines NEXT_PUBLIC_* vars at build
-// time, so a real production build (where this is unset/"false") dead-code-eliminates the
-// whole block instead of shipping it.
+// time, so as long as NEXT_PUBLIC_USE_EMULATOR is actually set to a literal value (not left
+// unset) at build time, webpack can statically evaluate the check and dead-code-eliminate
+// the whole block instead of shipping it. web/Dockerfile declares an ARG/ENV pair for this
+// var with a "false" default, so `docker build` always gets a concrete value here — including
+// a bare `docker build .` with no --build-arg passed — but a from-scratch `npm run build`
+// invocation that doesn't set the env var will NOT eliminate this block; always set
+// NEXT_PUBLIC_USE_EMULATOR explicitly when building for production outside the Dockerfile.
 const DEMO_ACCOUNTS = [
   "asha@acme.dev (administrator)",
   "vikram@acme.dev (maintainer)",
