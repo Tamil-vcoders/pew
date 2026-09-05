@@ -9,11 +9,15 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
+    "firebase-admin>=7.0",
+    "google-cloud-firestore>=2.20",
+    "pydantic-settings>=2.5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-asyncio>=0.24",
     "httpx",
     "ruff",
     "mypy",
@@ -30,3 +34,10 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[[tool.mypy.overrides]]
+module = "firebase_admin.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
