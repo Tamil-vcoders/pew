@@ -28,7 +28,7 @@ function ProjectRow({
   const q = search.trim().toLowerCase();
   const visible = prompts
     .filter((p) => showArchived || !p.archived)
-    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.tags.some((t) => t.includes(q)));
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)));
 
   if (q && visible.length === 0) return null;
 
@@ -40,9 +40,18 @@ function ProjectRow({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 4px" }}>
-        <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}>
-          {project.name}
-        </span>
+        {can.settings ? (
+          <input
+            value={project.name}
+            onChange={(e) => workspaceApi.renameProject(project.id, e.target.value)}
+            spellCheck={false}
+            style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}
+          />
+        ) : (
+          <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}>
+            {project.name}
+          </span>
+        )}
         {can.edit && (
           <button title="New prompt in this project" onClick={createPrompt}>
             +

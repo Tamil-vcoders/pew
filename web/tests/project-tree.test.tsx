@@ -21,7 +21,9 @@ vi.mock("../features/workspace/useProjectsStream", () => ({ useProjectsStream: (
 vi.mock("../features/workspace/usePromptsStream", () => ({
   usePromptsStream: (projectId: string) => mockPrompts[projectId] ?? [],
 }));
-vi.mock("../features/workspace/workspaceApi", () => ({ workspaceApi: { createProject: vi.fn(), createPrompt: vi.fn() } }));
+vi.mock("../features/workspace/workspaceApi", () => ({
+  workspaceApi: { createProject: vi.fn(), createPrompt: vi.fn(), renameProject: vi.fn() },
+}));
 
 import { ProjectTree } from "../features/workspace/ProjectTree";
 
@@ -61,5 +63,13 @@ describe("ProjectTree", () => {
     expect(screen.queryByTitle("New prompt in this project")).not.toBeInTheDocument();
     rerender(<ProjectTree role="contributor" activePromptId={null} />);
     expect(screen.getByTitle("New prompt in this project")).toBeInTheDocument();
+  });
+
+  it("shows an editable project name input for a maintainer and static text for a contributor", () => {
+    const { rerender } = render(<ProjectTree role="contributor" activePromptId={null} />);
+    expect(screen.getByText("Support automation")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Support automation")).not.toBeInTheDocument();
+    rerender(<ProjectTree role="maintainer" activePromptId={null} />);
+    expect(screen.getByDisplayValue("Support automation")).toBeInTheDocument();
   });
 });
