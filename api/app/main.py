@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import auth, projects, prompts, versions
+from app.routes import auth, projects, prompts, suggestions, versions
 
 app = FastAPI(title="pew-api")
 
@@ -18,6 +18,7 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(prompts.router)
 app.include_router(versions.router)
+app.include_router(suggestions.router)
 
 
 @app.get("/healthz")
