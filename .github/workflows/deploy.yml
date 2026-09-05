@@ -27,7 +27,7 @@ jobs:
             --region $REGION --allow-unauthenticated \
             --memory 1Gi --timeout 900 --concurrency 40 \
             --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
-            --set-env-vars FIREBASE_PROJECT_ID=$PROJECT,TASKS_QUEUE=cycle-iterations
+            --set-env-vars FIREBASE_PROJECT_ID=$PROJECT,TASKS_QUEUE=cycle-iterations,CORS_ORIGINS=${{ vars.WEB_URL }}
 
       - name: Build and push web
         run: |
