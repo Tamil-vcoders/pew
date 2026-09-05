@@ -103,6 +103,36 @@ def test_contributor_can_rename_and_tag_but_not_archive() -> None:
     assert denied.status_code == 403
 
 
+def test_viewer_gets_403_renaming_a_prompt() -> None:
+    """The rename/tag path is contributor-gated too — a viewer's token must be denied here,
+    not just on the archive path (test_contributor_can_rename_and_tag_but_not_archive above
+    only exercises the "allowed" rename case and the "denied" archive case; this covers the
+    "denied" rename case the same boundary requires)."""
+    admin = _bootstrap("asha@acme.dev")
+    project_id = _make_project(admin["id_token"])
+    prompt = client.post(
+        f"/projects/{project_id}/prompts", json={"name": "Draft", "tags": []},
+        headers=auth_headers(admin["id_token"]),
+    ).json()
+
+    viewer = _bootstrap("dev@acme.dev")
+    resp = client.patch(
+        f"/projects/{project_id}/prompts/{prompt['id']}", json={"name": "Renamed"},
+        headers=auth_headers(viewer["id_token"]),
+    )
+    assert resp.status_code == 403
+
+
+def test_patching_a_missing_prompt_is_404() -> None:
+    admin = _bootstrap("asha@acme.dev")
+    project_id = _make_project(admin["id_token"])
+    resp = client.patch(
+        f"/projects/{project_id}/prompts/does-not-exist", json={"name": "x"},
+        headers=auth_headers(admin["id_token"]),
+    )
+    assert resp.status_code == 404
+
+
 def test_maintainer_can_archive_and_unarchive() -> None:
     admin = _bootstrap("asha@acme.dev")
     project_id = _make_project(admin["id_token"])
