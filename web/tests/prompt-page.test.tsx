@@ -97,6 +97,28 @@ describe("PromptPage", () => {
     expect(screen.getByTestId("suggestions-panel")).toHaveTextContent("Summarize the ticket.");
   });
 
+  it("syncs the draft to the real version text once versions finish loading async (regression)", () => {
+    // Regression test: useVersionsStream's onSnapshot never delivers data synchronously on
+    // first render — it starts as [] and populates a tick later. Reproduce that race by
+    // returning an empty versions array on the first call, then the real populated array on
+    // a subsequent render, and assert the editor's draft ends up showing the real text
+    // rather than staying stuck at "".
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
+    vi.mocked(useAuth).mockReturnValue({
+      firebaseUser: null, loading: false, signOut: vi.fn(),
+      profile: { uid: "u1", email: "a@b.com", name: "A", role: "contributor" as never, createdAt: "x" },
+    });
+    vi.mocked(usePromptDoc).mockReturnValue({ data: basePrompt, error: null });
+    vi.mocked(useVersionsStream).mockReturnValueOnce({ data: [], error: null });
+    vi.mocked(useVersionsStream).mockReturnValue({ data: [version1], error: null });
+
+    const { rerender } = render(<PromptPage params={{ promptId: "p1" }} />);
+    expect(screen.getByTestId("prompt-editor")).toHaveTextContent("");
+
+    rerender(<PromptPage params={{ promptId: "p1" }} />);
+    expect(screen.getByTestId("prompt-editor")).toHaveTextContent("Summarize the ticket.");
+  });
+
   it("shows a loading state while the prompt hasn't loaded yet", () => {
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
     vi.mocked(useAuth).mockReturnValue({

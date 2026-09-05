@@ -66,19 +66,25 @@ function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: s
 
 function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
   const { data: versions, error: versionsError } = useVersionsStream(projectId, prompt.id);
-  const currentVersionText = versions.find((v) => v.n === prompt.latestVersion)?.text ?? "";
+  const currentVersion = versions.find((v) => v.n === prompt.latestVersion) ?? null;
+  const currentVersionText = currentVersion?.text ?? "";
 
   const [draft, setDraft] = useState(currentVersionText);
-  const lastSyncedVersion = useRef(prompt.latestVersion);
+  const lastSyncedVersion = useRef<number | null>(null);
   useEffect(() => {
     // Reset the draft to the new current version whenever latestVersion actually advances
     // (a version was just created, via suggestion-apply here or a future run/cycle flow) —
     // but never clobber in-progress typing on an unrelated re-render.
-    if (prompt.latestVersion !== lastSyncedVersion.current) {
+    //
+    // Only mark a version "synced" once its real doc has actually loaded (currentVersion is
+    // non-null) — seeding lastSyncedVersion from prompt.latestVersion at mount would make this
+    // guard already "match" before Firestore's async onSnapshot ever delivers real data,
+    // permanently stranding draft at its empty initial value.
+    if (currentVersion && prompt.latestVersion !== lastSyncedVersion.current) {
       setDraft(currentVersionText);
       lastSyncedVersion.current = prompt.latestVersion;
     }
-  }, [prompt.latestVersion, currentVersionText]);
+  }, [prompt.latestVersion, currentVersion, currentVersionText]);
 
   async function applySuggestion(s: Suggestion) {
     await editorApi.createVersion(projectId, prompt.id, {
