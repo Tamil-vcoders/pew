@@ -1,6 +1,6 @@
 # api/app/routes/prompts.py
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.deps import ROLE_LEVEL, current_user, get_prompt_repo, require
 from app.domain.models import Prompt, User
@@ -13,11 +13,33 @@ class CreatePromptBody(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     tags: list[str] = []
 
+    # FirestorePromptRepo strips the name before storing it, so a name that is only
+    # whitespace (e.g. "   ") would pass the min_length=1 check above and then be stored
+    # as "". Strip here too, before the length check runs, so a whitespace-only name is
+    # rejected with a 422 instead of silently persisted as empty.
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
+
 
 class UpdatePromptBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     tags: list[str] | None = None
     archived: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
 
 
 def _serialize(prompt: Prompt) -> dict[str, object]:

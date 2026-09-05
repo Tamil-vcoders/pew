@@ -79,8 +79,8 @@ def test_administrator_can_rename_a_prompt_and_viewer_cannot_archive() -> None:
     case here exercises a genuine contributor token — "contributor" below is the
     bootstrapped-second-user *viewer*, not a real contributor (Phase 1 has no
     role-promotion endpoint, so the only way to mint one is a direct Firestore role update,
-    which is what test_genuine_contributor_can_rename_and_tag_but_not_archive below now
-    does). This test only proves: an administrator (>= contributor) may rename, and a
+    which is what test_genuine_contributor_can_create_and_rename_but_not_archive_a_prompt
+    below now does). This test only proves: an administrator (>= contributor) may rename, and a
     viewer (< contributor) may not archive. See that test for the actual contributor/
     maintainer boundary."""
     admin = _bootstrap("asha@acme.dev")
@@ -162,8 +162,8 @@ async def test_genuine_maintainer_can_archive_a_prompt() -> None:
 
 def test_viewer_gets_403_renaming_a_prompt() -> None:
     """The rename/tag path is contributor-gated too — a viewer's token must be denied here,
-    not just on the archive path (test_contributor_can_rename_and_tag_but_not_archive above
-    only exercises the "allowed" rename case and the "denied" archive case; this covers the
+    not just on the archive path (test_administrator_can_rename_a_prompt_and_viewer_cannot_archive
+    above only exercises the "allowed" rename case and the "denied" archive case; this covers the
     "denied" rename case the same boundary requires)."""
     admin = _bootstrap("asha@acme.dev")
     project_id = _make_project(admin["id_token"])
