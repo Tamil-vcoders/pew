@@ -1,6 +1,6 @@
 // web/tests/project-tree.test.tsx
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("next/link", () => ({
@@ -17,15 +17,24 @@ const mockPrompts: Record<string, Array<{ id: string; projectId: string; name: s
   ],
 };
 
-vi.mock("../features/workspace/useProjectsStream", () => ({ useProjectsStream: () => mockProjects }));
+vi.mock("../features/workspace/useProjectsStream", () => ({
+  useProjectsStream: () => ({ data: mockProjects, error: null }),
+}));
 vi.mock("../features/workspace/usePromptsStream", () => ({
-  usePromptsStream: (projectId: string) => mockPrompts[projectId] ?? [],
+  usePromptsStream: (projectId: string) => ({ data: mockPrompts[projectId] ?? [], error: null }),
 }));
 vi.mock("../features/workspace/workspaceApi", () => ({
   workspaceApi: { createProject: vi.fn(), createPrompt: vi.fn(), renameProject: vi.fn() },
 }));
 
 import { ProjectTree } from "../features/workspace/ProjectTree";
+import { workspaceApi } from "../features/workspace/workspaceApi";
+
+beforeEach(() => {
+  vi.mocked(workspaceApi.createProject).mockReset();
+  vi.mocked(workspaceApi.createPrompt).mockReset();
+  vi.mocked(workspaceApi.renameProject).mockReset();
+});
 
 describe("ProjectTree", () => {
   it("shows non-archived prompts by default and hides the archived one", () => {
@@ -71,5 +80,27 @@ describe("ProjectTree", () => {
     expect(screen.queryByDisplayValue("Support automation")).not.toBeInTheDocument();
     rerender(<ProjectTree role="maintainer" activePromptId={null} />);
     expect(screen.getByDisplayValue("Support automation")).toBeInTheDocument();
+  });
+
+  it("buffers project name edits locally (no API call per keystroke) and commits exactly once on blur", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(<ProjectTree role="maintainer" activePromptId={null} />);
+    const input = screen.getByDisplayValue("Support automation") as HTMLInputElement;
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "Renamed project");
+    expect(input.value).toBe("Renamed project");
+    expect(workspaceApi.renameProject).not.toHaveBeenCalled();
+
+    fireEvent.blur(input);
+    await vi.waitFor(() => expect(workspaceApi.renameProject).toHaveBeenCalledTimes(1));
+    expect(workspaceApi.renameProject).toHaveBeenCalledWith("j1", "Renamed project");
+  });
+
+  it("shows an inline error message when creating a project fails", async () => {
+    vi.mocked(workspaceApi.createProject).mockRejectedValueOnce(new Error("Project name already exists"));
+    render(<ProjectTree role="maintainer" activePromptId={null} />);
+    fireEvent.click(screen.getByTitle("New project"));
+    expect(await screen.findByText("Project name already exists")).toBeInTheDocument();
   });
 });

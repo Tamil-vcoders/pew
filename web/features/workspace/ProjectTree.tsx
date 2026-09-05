@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { capabilitiesFor, type Role } from "@/shared/rbac/permissions";
 import { COLORS } from "@/shared/ui/tokens";
 import { useProjectsStream } from "./useProjectsStream";
@@ -24,17 +24,45 @@ function ProjectRow({
   showArchived: boolean;
 }) {
   const router = useRouter();
-  const prompts = usePromptsStream(project.id);
+  const { data: prompts, error: promptsError } = usePromptsStream(project.id);
   const q = search.trim().toLowerCase();
   const visible = prompts
     .filter((p) => showArchived || !p.archived)
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)));
 
+  // Local buffer for the in-progress edit: binding the input directly to the live
+  // Firestore-backed `project.name` means every keystroke re-renders with the OLD
+  // value until the rename PATCH round-trips through the API and Firestore, so the
+  // displayed text visibly lags/fights what was typed. Buffer locally and only commit
+  // on blur; re-sync if the name changes from elsewhere (e.g. another user renames it).
+  const [nameDraft, setNameDraft] = useState(project.name);
+  useEffect(() => {
+    setNameDraft(project.name);
+  }, [project.name]);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   if (q && visible.length === 0) return null;
 
+  async function commitRename() {
+    if (nameDraft === project.name) return;
+    try {
+      setActionError(null);
+      await workspaceApi.renameProject(project.id, nameDraft);
+    } catch (err) {
+      console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to rename project.");
+    }
+  }
+
   async function createPrompt() {
-    const created = await workspaceApi.createPrompt(project.id, `New prompt ${prompts.length + 1}`, []);
-    router.push(`/p/${created.id}?project=${project.id}`);
+    try {
+      setActionError(null);
+      const created = await workspaceApi.createPrompt(project.id, `New prompt ${prompts.length + 1}`, []);
+      router.push(`/p/${created.id}?project=${project.id}`);
+    } catch (err) {
+      console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to create prompt.");
+    }
   }
 
   return (
@@ -42,8 +70,9 @@ function ProjectRow({
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 4px" }}>
         {can.settings ? (
           <input
-            value={project.name}
-            onChange={(e) => workspaceApi.renameProject(project.id, e.target.value)}
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitRename}
             spellCheck={false}
             style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}
           />
@@ -58,6 +87,12 @@ function ProjectRow({
           </button>
         )}
       </div>
+      {actionError && (
+        <div style={{ fontSize: 10, color: COLORS.bad, padding: "0 4px 4px" }}>{actionError}</div>
+      )}
+      {promptsError && (
+        <div style={{ fontSize: 10, color: COLORS.bad, padding: "0 4px 4px" }}>{promptsError.message}</div>
+      )}
       {visible.map((prompt) => (
         <Link
           key={prompt.id}
@@ -86,9 +121,20 @@ function ProjectRow({
 
 export function ProjectTree({ role, activePromptId }: { role: Role | null; activePromptId: string | null }) {
   const can = capabilitiesFor(role);
-  const projects = useProjectsStream();
+  const { data: projects, error: projectsError } = useProjectsStream();
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function createProject() {
+    try {
+      setCreateError(null);
+      await workspaceApi.createProject(`New project ${projects.length + 1}`);
+    } catch (err) {
+      console.error(err);
+      setCreateError(err instanceof Error ? err.message : "Failed to create project.");
+    }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: 230 }}>
@@ -100,11 +146,13 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
           style={{ flex: 1 }}
         />
         {can.settings && (
-          <button title="New project" onClick={() => workspaceApi.createProject(`New project ${projects.length + 1}`)}>
+          <button title="New project" onClick={createProject}>
             +
           </button>
         )}
       </div>
+      {createError && <div style={{ fontSize: 10.5, color: COLORS.bad }}>{createError}</div>}
+      {projectsError && <div style={{ fontSize: 10.5, color: COLORS.bad }}>{projectsError.message}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflow: "auto" }}>
         {projects.map((project) => (
           <ProjectRow
