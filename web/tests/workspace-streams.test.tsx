@@ -3,16 +3,19 @@ import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 type SnapshotCallback = (snap: unknown) => void;
+type ErrorCallback = (err: Error) => void;
 type FirestoreRef = { __path: string };
 
 // Path-keyed onSnapshot tracking: real Firestore identifies subscriptions by
 // the collection/document reference (or query built from one), so the mock
 // mirrors that by building a "__path" out of the segments passed to
-// collection()/doc(), and recording the onSnapshot callback + unsubscribe spy
-// per path. This lets tests for usePromptsStream/usePromptDoc distinguish
-// subscriptions for different projectId/promptId values, and assert re-subscribe
-// (old path's unsubscribe called) / unsubscribe-on-unmount behavior.
+// collection()/doc(), and recording the onSnapshot success/error callbacks +
+// unsubscribe spy per path. This lets tests for usePromptsStream/usePromptDoc
+// distinguish subscriptions for different projectId/promptId values, and assert
+// re-subscribe (old path's unsubscribe called) / unsubscribe-on-unmount behavior,
+// as well as drive each hook's onSnapshot error callback directly.
 const snapshotCallbacksByPath = new Map<string, SnapshotCallback>();
+const errorCallbacksByPath = new Map<string, ErrorCallback>();
 const unsubscribeSpiesByPath = new Map<string, ReturnType<typeof vi.fn>>();
 
 vi.mock("../shared/firebase/client", () => ({ db: {} }));
@@ -25,8 +28,9 @@ vi.mock("firebase/firestore", () => ({
   })),
   query: vi.fn((ref: FirestoreRef, ..._constraints: unknown[]): FirestoreRef => ref),
   orderBy: vi.fn(),
-  onSnapshot: vi.fn((ref: FirestoreRef, cb: SnapshotCallback) => {
+  onSnapshot: vi.fn((ref: FirestoreRef, cb: SnapshotCallback, errCb?: ErrorCallback) => {
     snapshotCallbacksByPath.set(ref.__path, cb);
+    if (errCb) errorCallbacksByPath.set(ref.__path, errCb);
     const unsubscribe = vi.fn();
     unsubscribeSpiesByPath.set(ref.__path, unsubscribe);
     return unsubscribe;
@@ -38,18 +42,33 @@ import { usePromptsStream } from "../features/workspace/usePromptsStream";
 import { usePromptDoc } from "../features/workspace/usePromptDoc";
 
 function ProjectsProbe() {
-  const projects = useProjectsStream();
-  return <p>{projects.map((p) => p.name).join(",")}</p>;
+  const { data: projects, error } = useProjectsStream();
+  return (
+    <>
+      <p>{projects.map((p) => p.name).join(",")}</p>
+      {error && <p>error: {error.message}</p>}
+    </>
+  );
 }
 
 function PromptsProbe({ projectId }: { projectId: string }) {
-  const prompts = usePromptsStream(projectId);
-  return <p>{prompts.map((p) => p.name).join(",")}</p>;
+  const { data: prompts, error } = usePromptsStream(projectId);
+  return (
+    <>
+      <p>{prompts.map((p) => p.name).join(",")}</p>
+      {error && <p>error: {error.message}</p>}
+    </>
+  );
 }
 
 function PromptDocProbe({ projectId, promptId }: { projectId: string; promptId: string }) {
-  const prompt = usePromptDoc(projectId, promptId);
-  return <p>{prompt ? prompt.name : "none"}</p>;
+  const { data: prompt, error } = usePromptDoc(projectId, promptId);
+  return (
+    <>
+      <p>{prompt ? prompt.name : "none"}</p>
+      {error && <p>error: {error.message}</p>}
+    </>
+  );
 }
 
 describe("useProjectsStream", () => {
@@ -76,6 +95,17 @@ describe("useProjectsStream", () => {
       });
     });
     expect(screen.getByText("Support automation")).toBeInTheDocument();
+  });
+
+  it("surfaces a Firestore-level error (e.g. permission-denied) via onSnapshot's error callback instead of throwing", async () => {
+    render(<ProjectsProbe />);
+    const errorCallback = errorCallbacksByPath.get("projects");
+    expect(errorCallback).toBeTypeOf("function");
+
+    await act(async () => {
+      errorCallback?.(new Error("permission-denied"));
+    });
+    expect(screen.getByText("error: permission-denied")).toBeInTheDocument();
   });
 });
 
@@ -134,6 +164,26 @@ describe("usePromptsStream", () => {
     // The already-torn-down j1 subscription must not be touched again on unmount.
     expect(j1Unsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  it("surfaces a schema-parse failure into the returned error instead of crashing the listener", async () => {
+    render(<PromptsProbe projectId="j3" />);
+    const path = "projects/j3/prompts";
+    const callback = snapshotCallbacksByPath.get(path);
+    expect(callback).toBeTypeOf("function");
+
+    // Missing required PromptSchema fields (tags/archived/latestVersion) makes
+    // PromptSchema.parse throw inside the success callback. Before the fix this
+    // exception was uncaught and killed the subscription silently; now it must
+    // be caught and routed into the returned error state.
+    await act(async () => {
+      callback?.({
+        docs: [{ id: "bad", data: () => ({ name: "Malformed prompt doc" }) }],
+      });
+    });
+
+    expect(screen.getByText(/^error:/)).toBeInTheDocument();
+    expect(screen.queryByText("Malformed prompt doc")).not.toBeInTheDocument();
+  });
 });
 
 describe("usePromptDoc", () => {
@@ -185,5 +235,17 @@ describe("usePromptDoc", () => {
     });
     expect(screen.getByText("none")).toBeInTheDocument();
     expect(screen.queryByText("Soon deleted prompt")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a Firestore-level error via onSnapshot's error callback instead of leaving the subscription silently dead", async () => {
+    render(<PromptDocProbe projectId="j3" promptId="p3" />);
+    const path = "projects/j3/prompts/p3";
+    const errorCallback = errorCallbacksByPath.get(path);
+    expect(errorCallback).toBeTypeOf("function");
+
+    await act(async () => {
+      errorCallback?.(new Error("permission-denied"));
+    });
+    expect(screen.getByText("error: permission-denied")).toBeInTheDocument();
   });
 });
