@@ -31,3 +31,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+#Claude
+.claude/
+
+# Firebase emulators
+firestore-debug.log
+
