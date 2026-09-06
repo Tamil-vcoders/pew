@@ -86,8 +86,9 @@ Seeded accounts (`api/scripts/seed.py`, `DEMO_ACCOUNTS` / `DEMO_PASSWORD`), all 
    `{{urgency_levels}}` template vars, no format instruction, no example).
 3. Point out the **"Static validation"** panel below it, and name each of the 4 catalogue
    rules — all fail on this draft:
-   - **"Clear and direct"** — fails: `Hedging language ("try to") leaves the task
-     underspecified.` (matches `page.getByText(/Hedging language/i)` in the e2e spec)
+   - **"Clear and direct"** — fails: `Hedging language ("Try to") leaves the task
+     underspecified.` (capital T — the seeded prompt's "Try to be helpful..." starts a new
+     sentence; matches `page.getByText(/Hedging language/i)` in the e2e spec)
    - **"Be specific"** — fails: `No explicit output format — the model is left to choose.`
    - **"XML structure"** — fails: `2 of 2 variable(s) not wrapped in a tag.` (both
      `{{ticket_text}}` and `{{urgency_levels}}` are bare, not `<tag>{{var}}</tag>`)
@@ -188,8 +189,11 @@ triage", or **"Ticket triage"** if beat 6's real take used "Reply drafter".
 2. Set **"Budget cap ($)"** to an artificially tiny value: `0.001` (the brief's suggested
    value; the integration test above uses an even smaller `0.0001` — either works, since
    registry rates are $/1M tokens and a single-case iteration costs cents, far above either
-   value). Leave Target score / Max iterations at their seeded defaults — the cap is what
-   forces the ending, not the target.
+   value). Leave Target score / Max iterations at whatever value is currently showing — they
+   don't affect the budget-cap mechanism either way. (Note for a rehearsal recording only:
+   "Ticket triage" and "Reply drafter" share one project's cfg, so if beat 6 changed Target
+   score / Max iterations on the *other* prompt in the same project, those edited values —
+   not the seeded 8 / 4 — are what you'll see here; that's expected and harmless, not a bug.)
 3. Click `Start cycle on "<promptName>"`.
 4. Click the **"Dataset"** tab, click **"Approve dataset & continue"**.
 5. Click the **"Run"** tab. The **"Iteration 1 — projected cost before it starts"** banner
