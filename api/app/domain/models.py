@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from app.domain.suggestions import Suggestion
 
@@ -214,3 +214,28 @@ class Cycle:
     config: CycleConfigSnapshot
     log: list[CycleLogEntry]
     started_by: str
+
+
+@dataclass(frozen=True)
+class PrivacySettings:
+    """Org-wide retention/telemetry preferences (devspec F11) — a single doc, read/written
+    only via the API (see FirestoreOrgSettingsRepo)."""
+
+    retention_days: int
+    telemetry: bool
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    """One append-only auditLogs/{entryId} row (AC-18.1's `{actor, action, subject, before,
+    after, ts}` shape). `id` is the Firestore doc id — kept here (unlike the shape devspec §7
+    lists as the doc's own fields) because the admin API serializes these as a flat list and
+    needs a stable identifier per entry."""
+
+    id: str
+    actor: str
+    action: str
+    subject: str
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    ts: datetime

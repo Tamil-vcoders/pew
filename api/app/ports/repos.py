@@ -5,11 +5,13 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from app.domain.models import (
+    AuditEntry,
     Case,
     CaseResult,
     CaseSource,
     Cycle,
     ModelRates,
+    PrivacySettings,
     Project,
     ProjectCfg,
     Prompt,
@@ -36,11 +38,27 @@ class AuditRepo(Protocol):
         transaction: Any | None = None,
     ) -> None: ...
 
+    async def list_all(self) -> list[AuditEntry]:
+        """Most recent first (FirestoreAuditRepo orders by `ts` DESCENDING — a single-field
+        index, no composite index required)."""
+        ...
+
 
 class UserRepo(Protocol):
     async def get(self, uid: str) -> User | None: ...
 
     async def get_or_bootstrap(self, uid: str, email: str | None, name: str | None) -> User: ...
+
+    async def list_all(self) -> list[User]: ...
+
+    async def update_role(self, uid: str, role: str) -> User: ...
+
+    async def update_name(self, uid: str, name: str) -> User: ...
+
+    async def anonymize(self, uid: str) -> None:
+        """Overwrites name -> "Deleted user", email -> "", role -> "viewer". The doc is kept,
+        not deleted — auditLogs entries reference actor uids by id and must keep resolving."""
+        ...
 
 
 class ProjectRepo(Protocol):
@@ -144,6 +162,27 @@ class RunRepo(Protocol):
 
 class ModelRegistryRepo(Protocol):
     async def get_all(self) -> dict[str, ModelRates]: ...
+
+    async def update(
+        self,
+        model_id: str,
+        *,
+        rate_in_per_1m: float | None = None,
+        rate_out_per_1m: float | None = None,
+        enabled: bool | None = None,
+    ) -> ModelRates:
+        """Partial update — only the fields passed are changed. Raises LookupError if
+        model_id isn't a known registry entry."""
+        ...
+
+
+class OrgSettingsRepo(Protocol):
+    """Org-wide settings outside the per-project cfg — v1 has exactly one section (privacy),
+    backed by a single doc (see FirestoreOrgSettingsRepo)."""
+
+    async def get_privacy(self) -> PrivacySettings: ...
+
+    async def update_privacy(self, *, retention_days: int, telemetry: bool) -> PrivacySettings: ...
 
 
 class CycleRepo(Protocol):

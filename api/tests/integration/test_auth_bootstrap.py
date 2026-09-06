@@ -23,7 +23,9 @@ def test_second_distinct_user_becomes_viewer() -> None:
     assert resp.json()["role"] == "viewer"
 
 
-async def test_bootstrap_writes_an_audit_log_entry_for_the_first_admin_only() -> None:
+async def test_bootstrap_writes_an_audit_log_entry_for_every_new_user() -> None:
+    # Phase 5 (US-18): every new-user branch is audited now, not just the first — the
+    # `action` distinguishes bootstrap-admin (first user) from an ordinary user-signup.
     from app.deps import get_firestore_client
 
     asha = create_emulator_user("asha@acme.dev")
@@ -32,11 +34,13 @@ async def test_bootstrap_writes_an_audit_log_entry_for_the_first_admin_only() ->
     client.get("/me", headers=auth_headers(dev["id_token"]))
 
     fs = await get_firestore_client()
-    docs = [d async for d in fs.collection("auditLogs").stream()]
-    assert len(docs) == 1
-    entry = docs[0].to_dict()
-    assert entry["action"] == "bootstrap-admin"
-    assert entry["subject"] == asha["uid"]
+    docs = [d async for d in fs.collection("auditLogs").order_by("ts").stream()]
+    assert len(docs) == 2
+    first, second = (d.to_dict() for d in docs)
+    assert first["action"] == "bootstrap-admin"
+    assert first["subject"] == asha["uid"]
+    assert second["action"] == "user-signup"
+    assert second["subject"] == dev["uid"]
 
 
 def test_missing_bearer_token_is_rejected() -> None:

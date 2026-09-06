@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 import firebase_admin
-from fastapi import Depends, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, Header, HTTPException
 from firebase_admin import auth as fb_auth
+from google.auth.transport import requests as google_auth_requests
 from google.cloud import firestore
+from google.oauth2 import id_token
 
 from app.adapters.firestore_repos import FirestoreAuditRepo, FirestoreUserRepo
 from app.adapters.gemini import GeminiProvider
@@ -19,12 +22,20 @@ from app.ports.repos import (
     CycleRepo,
     DatasetRepo,
     ModelRegistryRepo,
+    OrgSettingsRepo,
     ProjectRepo,
     PromptRepo,
     RunRepo,
     UserRepo,
     VersionRepo,
 )
+from app.ports.tasks import TaskQueue
+
+if TYPE_CHECKING:
+    # Only needed for build_task_queue's type hint below — a real top-level import would cycle
+    # (app.services.cycles doesn't import deps.py today, but this keeps the wiring module from
+    # ever depending on the service layer at runtime, matching every other import in this file).
+    from app.services.cycles import CycleDeps
 
 _firebase_app: firebase_admin.App | None = None
 _firestore_client: firestore.AsyncClient | None = None
@@ -136,6 +147,63 @@ def get_cycle_repo(client: firestore.AsyncClient = Depends(get_firestore_client)
     from app.adapters.firestore_repos import FirestoreCycleRepo
 
     return FirestoreCycleRepo(client)
+
+
+def get_org_settings_repo(
+    client: firestore.AsyncClient = Depends(get_firestore_client),
+) -> OrgSettingsRepo:
+    from app.adapters.firestore_repos import FirestoreOrgSettingsRepo
+
+    return FirestoreOrgSettingsRepo(client)
+
+
+def build_task_queue(background_tasks: BackgroundTasks, deps: CycleDeps) -> TaskQueue:
+    """Picks the TaskQueue adapter off settings.tasks_mode. Takes the CycleDeps it will be
+    wired into (rather than constructing one standalone) because InlineTaskQueue needs a
+    reference to that very CycleDeps, so the auto-chain it eventually re-enters still has
+    working repos/background_tasks. Both routes/cycles.py::_deps() and
+    routes/internal.py's deps-builder therefore build CycleDeps in two steps: construct with
+    a placeholder `tasks`, then `deps.tasks = build_task_queue(background_tasks, deps)`
+    (CycleDeps is a plain mutable dataclass, not frozen — legal). Mirrors the same
+    local-import ordering convention used throughout this file."""
+    settings = get_settings()
+    if settings.tasks_mode == "cloudtasks":
+        from app.adapters.cloud_tasks import CloudTasksQueue
+
+        return CloudTasksQueue(
+            project=settings.firebase_project_id,
+            location=settings.tasks_location,
+            queue=settings.tasks_queue,
+            api_url=settings.api_public_url,
+            invoker_sa=settings.internal_invoker_sa,
+        )
+    from app.adapters.inline_tasks import InlineTaskQueue
+
+    return InlineTaskQueue(background_tasks=background_tasks, deps=deps)
+
+
+async def verify_internal_oidc(authorization: str | None = Header(default=None)) -> None:
+    """Gate for POST /internal/iterations — service-to-service only (no current_user/
+    require()). Verifies the token was minted for the internal invoker service account with
+    the audience locked to this exact endpoint; a genuine Firebase user ID token fails here
+    on signature/issuer mismatch, so user tokens are rejected without any special-casing
+    (devspec §8)."""
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(403, "Missing bearer token")
+    settings = get_settings()
+    try:
+        # google.oauth2.id_token.verify_oauth2_token ships py.typed but its own signature has
+        # no annotations — an upstream gap, not a stub-discovery problem (that's what
+        # firebase_admin's ignore_missing_imports override above is for).
+        claims = id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
+            authorization.removeprefix("Bearer "),
+            google_auth_requests.Request(),
+            audience=f"{settings.api_public_url}/internal/iterations",
+        )
+    except Exception as exc:
+        raise HTTPException(403, "Invalid internal OIDC token") from exc
+    if claims.get("email") != settings.internal_invoker_sa or not claims.get("email_verified"):
+        raise HTTPException(403, "Token not issued to the internal invoker service account")
 
 
 def get_llm_provider() -> LLMProvider:
