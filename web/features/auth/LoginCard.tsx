@@ -2,35 +2,16 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Lock, Mail, UserCircle } from "lucide-react";
-import { COLORS, FONT_MONO, ROLE_COLOR } from "@/shared/ui/tokens";
+import { COLORS } from "@/shared/ui/tokens";
 import { Btn } from "@/shared/ui/Btn";
 import { resetPassword, signIn, signInWithGoogle, signUp } from "./authService";
 import { useAuth } from "./useAuth";
 
 type Mode = "signin" | "signup";
 
-// Quick demo-account auto-login buttons from the prototype (docs/prototype.jsx lines
-// 553-566) are intentionally NOT ported as clickable, one-click-login controls. The
-// prototype fakes authentication entirely ("no real authentication happens", prototype.jsx
-// line 569); this build calls real Firebase Auth, so a one-click role switcher would be an
-// actual auth bypass, not a prototype convenience. We DO port the visual design of that
-// list (colored role chips) below, but every chip is inert (a plain <div>, not a <button>) --
-// a human tester still has to type the email/password themselves. This list (and the shared
-// password) must never reach a production build, so it's gated behind
-// NEXT_PUBLIC_USE_EMULATOR === "true" below; Next.js inlines NEXT_PUBLIC_* vars at build
-// time, so as long as NEXT_PUBLIC_USE_EMULATOR is actually set to a literal value (not left
-// unset) at build time, webpack can statically evaluate the check and dead-code-eliminate
-// the whole block instead of shipping it. web/Dockerfile declares an ARG/ENV pair for this
-// var with a "false" default, so `docker build` always gets a concrete value here -- including
-// a bare `docker build .` with no --build-arg passed -- but a from-scratch `npm run build`
-// invocation that doesn't set the env var will NOT eliminate this block; always set
-// NEXT_PUBLIC_USE_EMULATOR explicitly when building for production outside the Dockerfile.
-const DEMO_ACCOUNTS = [
-  { name: "Asha", email: "asha@acme.dev", role: "administrator" },
-  { name: "Vikram", email: "vikram@acme.dev", role: "maintainer" },
-  { name: "Meera", email: "meera@acme.dev", role: "contributor" },
-  { name: "Dev", email: "dev@acme.dev", role: "viewer" },
-] as const;
+// The prototype's quick demo-account list (docs/prototype.jsx lines 553-566) is intentionally
+// not shown here at all -- not even as a read-only visual list. Seeded demo credentials for
+// manual role testing are documented in docs/demo-script.md instead.
 
 const inputStyle: React.CSSProperties = {
   background: "#0F1116",
@@ -317,47 +298,6 @@ export function LoginCard() {
         </span>
         Continue with Google
       </button>
-
-      {process.env.NEXT_PUBLIC_USE_EMULATOR === "true" && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 11, color: COLORS.faint, marginBottom: 8 }}>
-            Quick demo accounts (for role testing):
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {DEMO_ACCOUNTS.map((account) => (
-              <div
-                key={account.email}
-                title={account.email}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  border: `0.5px solid ${COLORS.border}`,
-                  borderRadius: 6,
-                  padding: "5px 9px",
-                  fontSize: 12,
-                  color: COLORS.muted,
-                }}
-              >
-                {account.name}
-                <span
-                  style={{
-                    fontFamily: FONT_MONO,
-                    fontSize: 10.5,
-                    color: ROLE_COLOR[account.role],
-                    background: `${ROLE_COLOR[account.role]}1F`,
-                    border: `0.5px solid ${ROLE_COLOR[account.role]}55`,
-                    borderRadius: 4,
-                    padding: "1px 6px",
-                  }}
-                >
-                  {account.role}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div style={{ fontSize: 10.5, color: COLORS.faint, lineHeight: 1.6, marginTop: 18, textAlign: "center" }}>
         Signed in via Firebase Auth (email/password + Google); roles are read fresh from the

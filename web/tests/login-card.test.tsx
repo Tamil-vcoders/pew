@@ -84,22 +84,12 @@ describe("LoginCard", () => {
     expect(await screen.findByText("Wrong password")).toBeInTheDocument();
   });
 
-  it("lists the seeded demo accounts (name + role chip) for manual role testing when the emulator flag is on", () => {
+  it("never shows demo account details, regardless of the emulator flag", () => {
     vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "true");
-    render(<LoginCard />);
-    expect(screen.getByText("Asha")).toBeInTheDocument();
-    expect(screen.getByText("administrator")).toBeInTheDocument();
-    expect(screen.getByText("Dev")).toBeInTheDocument();
-    expect(screen.getByText("viewer")).toBeInTheDocument();
-    // The email is still present (as a tooltip, not visible text) so a tester knows what to type.
-    expect(screen.getByTitle("asha@acme.dev")).toBeInTheDocument();
-  });
-
-  it("does not list the seeded demo accounts when the emulator flag is not set", () => {
-    vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "false");
     render(<LoginCard />);
     expect(screen.queryByText("Asha")).not.toBeInTheDocument();
     expect(screen.queryByText(/quick demo accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/asha@acme\.dev/)).not.toBeInTheDocument();
   });
 
   it("toggles password visibility", () => {

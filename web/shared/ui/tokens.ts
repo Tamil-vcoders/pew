@@ -15,9 +15,3 @@ export const ROLE_COLOR: Record<string, string> = {
   maintainer: COLORS.mid,
   administrator: COLORS.accent,
 };
-
-// Matches the CSS variables app/layout.tsx exposes via next/font/google (Inter + JetBrains
-// Mono, ported from docs/prototype.jsx's .pew/.pew-mono classes). Falls back to the system
-// stacks the app already used before fonts were wired up, so nothing breaks if a component
-// renders before the font variables are attached (e.g. in a test without the root layout).
-export const FONT_MONO = "var(--font-jetbrains-mono), ui-monospace, 'SF Mono', Menlo, monospace";
