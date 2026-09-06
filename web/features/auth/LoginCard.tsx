@@ -151,7 +151,7 @@ export function LoginCard() {
         Prompt Evaluation Workbench
       </div>
       <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 18, textAlign: "center" }}>
-        {mode === "signin" ? "Sign in to your workspace" : "Create your account"}
+        {mode === "signin" ? "Sign in to VCODERS AI LLP workspace" : "Create your account"}
       </div>
 
       <div
