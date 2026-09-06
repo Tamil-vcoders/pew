@@ -12,6 +12,14 @@ os.environ.setdefault("FIRESTORE_EMULATOR_HOST", "localhost:8080")
 os.environ.setdefault("FIREBASE_AUTH_EMULATOR_HOST", "localhost:9099")
 os.environ.setdefault("FIREBASE_PROJECT_ID", "demo-pew-test")
 
+from app.adapters.fake_llm import FakeLLMProvider
+from app.deps import get_llm_provider
+from app.main import app
+
+# Every integration test runs against FakeLLMProvider — CI must never spend real Gemini
+# tokens (CLAUDE.md testing conventions). Overridden once at import time for the whole suite.
+app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider()
+
 PROJECT_ID = os.environ["FIREBASE_PROJECT_ID"]
 AUTH_EMULATOR = f"http://{os.environ['FIREBASE_AUTH_EMULATOR_HOST']}"
 FIRESTORE_EMULATOR = f"http://{os.environ['FIRESTORE_EMULATOR_HOST']}"
@@ -43,6 +51,14 @@ def create_emulator_user(email: str, password: str = "correct horse battery stap
 
 def auth_headers(id_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {id_token}"}
+
+
+async def seed_model_registry() -> None:
+    from app.deps import get_firestore_client
+    from scripts.seed import _upsert_model_registry
+
+    fs = await get_firestore_client()
+    await _upsert_model_registry(fs)
 
 
 async def set_user_role(uid: str, role: str) -> None:

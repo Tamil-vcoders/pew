@@ -4,11 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
-import { usePromptDoc, workspaceApi } from "@/features/workspace";
+import { useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
 import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/features/editor";
 import { SuggestionsPanel } from "@/features/suggestions";
+import { DatasetTab, useDatasetStream } from "@/features/dataset";
+import { RunTab } from "@/features/runs";
+import { Tab } from "@/shared/ui";
 import { COLORS } from "@/shared/ui/tokens";
 import type { Prompt, Suggestion } from "@/shared/types";
+
+type WorkTab = "dataset" | "run" | "suggestions";
 
 function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
   // Local buffer for the in-progress name edit — binding directly to the live
@@ -66,14 +71,18 @@ function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: s
 
 function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
   const { data: versions, error: versionsError } = useVersionsStream(projectId, prompt.id);
+  const { data: project } = useProjectDoc(projectId);
+  const { data: cases, error: datasetError } = useDatasetStream(projectId, prompt.id);
   const currentVersion = versions.find((v) => v.n === prompt.latestVersion) ?? null;
   const currentVersionText = currentVersion?.text ?? "";
 
   const [draft, setDraft] = useState(currentVersionText);
+  const [tab, setTab] = useState<WorkTab>("dataset");
+  const [runId, setRunId] = useState<string | null>(null);
   const lastSyncedVersion = useRef<number | null>(null);
   useEffect(() => {
     // Reset the draft to the new current version whenever latestVersion actually advances
-    // (a version was just created, via suggestion-apply here or a future run/cycle flow) —
+    // (a version was just created, via suggestion-apply here or a run against a dirty draft) —
     // but never clobber in-progress typing on an unrelated re-render.
     //
     // Only mark a version "synced" once its real doc has actually loaded (currentVersion is
@@ -92,6 +101,8 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
     });
   }
 
+  const weights = project?.cfg.weights ?? { code: 1, model: 1, human: 1 };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PromptHeader prompt={prompt} projectId={projectId} can={can} />
@@ -104,7 +115,39 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
       />
       {versionsError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{versionsError.message}</div>}
       <VersionHistory versions={versions} currentVersionN={prompt.latestVersion} />
-      <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
+
+      <div style={{ display: "flex", gap: 14, borderBottom: `0.5px solid ${COLORS.border}` }}>
+        <Tab active={tab === "dataset"} onClick={() => setTab("dataset")} count={cases.length}>
+          Dataset
+        </Tab>
+        <Tab active={tab === "run"} onClick={() => setTab("run")}>
+          Run
+        </Tab>
+        <Tab active={tab === "suggestions"} onClick={() => setTab("suggestions")}>
+          Suggestions
+        </Tab>
+      </div>
+
+      {tab === "dataset" && (
+        <>
+          {datasetError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{datasetError.message}</div>}
+          <DatasetTab projectId={projectId} promptId={prompt.id} promptName={prompt.name} draft={draft} cases={cases} can={can} />
+        </>
+      )}
+      {tab === "run" && (
+        <RunTab
+          projectId={projectId}
+          promptId={prompt.id}
+          draft={draft}
+          weights={weights}
+          can={can}
+          runId={runId}
+          onRunStarted={setRunId}
+        />
+      )}
+      {tab === "suggestions" && (
+        <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
+      )}
     </div>
   );
 }

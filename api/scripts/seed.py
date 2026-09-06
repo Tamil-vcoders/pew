@@ -40,12 +40,30 @@ DEMO_ACCOUNTS = [
 ]
 DEMO_PASSWORD = "correct horse battery staple"
 
+# AI Studio rates per 1M tokens (ai.google.dev/gemini-api/docs/pricing, verified live
+# 2026-09-06) — re-verify before relying on these for real spend decisions. gemini-2.5-pro/
+# flash (devspec §6.2's originally-pinned models) return 404 "no longer available to new
+# users" on this key as of 2026-09; gemini-3.1-pro-preview/gemini-3.6-flash are the
+# confirmed-working replacements.
+MODEL_REGISTRY: dict[str, dict[str, Any]] = {
+    "gemini-3.1-pro-preview": {"label": "Gemini 3.1 Pro Preview", "ratesInPer1M": 2.00, "ratesOutPer1M": 12.00, "enabled": True},
+    "gemini-3.6-flash": {"label": "Gemini 3.6 Flash", "ratesInPer1M": 0.75, "ratesOutPer1M": 3.75, "enabled": True},
+}
+
+# Same 3 cases per demo prompt as the prototype's initial dataset (docs/prototype.jsx
+# newPrompt()) — gives "Generate 3 with AI" and "Run once" something to act on immediately.
+TRIAGE_DATASET = [
+    ("My invoice was charged twice this month, please refund the duplicate charge.", "high"),
+    ("How do I export my data to CSV?", "low"),
+    ("The app crashes every time I try to upload a photo larger than 5MB.", "medium"),
+]
+
 DEFAULT_CFG: dict[str, Any] = {
     "target": 8, "maxIter": 4, "budget": 0.6, "nSug": 2, "auto": False,
     "weights": {"code": 1, "model": 1, "human": 1},
     "models": {
-        "execution": "gemini-2.5-pro", "grading": "gemini-2.5-flash",
-        "suggestions": "gemini-2.5-flash", "datasetGen": "gemini-2.5-flash",
+        "execution": "gemini-3.1-pro-preview", "grading": "gemini-3.6-flash",
+        "suggestions": "gemini-3.6-flash", "datasetGen": "gemini-3.6-flash",
     },
 }
 
@@ -59,7 +77,10 @@ async def _upsert_project(fs: firestore.AsyncClient, name: str, cfg: dict[str, A
     return str(ref.id)
 
 
-async def _upsert_prompt(fs: firestore.AsyncClient, project_id: str, name: str, tags: list[str], text: str) -> None:
+async def _upsert_prompt(
+    fs: firestore.AsyncClient, project_id: str, name: str, tags: list[str], text: str,
+    dataset: list[tuple[str, str]] | None = None,
+) -> None:
     collection = fs.collection("projects").document(project_id).collection("prompts")
     existing = [d async for d in collection.where("nameLower", "==", name.lower()).limit(1).stream()]
     if existing:
@@ -73,6 +94,15 @@ async def _upsert_prompt(fs: firestore.AsyncClient, project_id: str, name: str, 
         "n": 1, "text": text, "note": "Initial draft", "technique": None,
         "createdBy": "seed-script", "createdAt": None,
     })
+    for order, (case_input, expected) in enumerate(dataset or []):
+        await ref.collection("dataset").document().set({
+            "input": case_input, "expected": expected, "order": order, "source": "manual",
+        })
+
+
+async def _upsert_model_registry(fs: firestore.AsyncClient) -> None:
+    for model_id, fields in MODEL_REGISTRY.items():
+        await fs.collection("modelRegistry").document(model_id).set(fields)
 
 
 async def _upsert_demo_accounts(fs: firestore.AsyncClient) -> None:
@@ -123,11 +153,12 @@ async def run(*, force: bool = False) -> None:
     }
     marketing_id = await _upsert_project(fs, "Marketing copy", marketing_cfg)
 
-    await _upsert_prompt(fs, support_id, "Ticket triage", ["triage", "prod"], TRIAGE_PROMPT)
+    await _upsert_prompt(fs, support_id, "Ticket triage", ["triage", "prod"], TRIAGE_PROMPT, TRIAGE_DATASET)
     await _upsert_prompt(fs, support_id, "Reply drafter", ["replies", "experiment"], REPLY_PROMPT)
     await _upsert_prompt(fs, marketing_id, "Product blurb writer", ["marketing", "experiment"], BLURB_PROMPT)
 
     await _upsert_demo_accounts(fs)
+    await _upsert_model_registry(fs)
 
 
 if __name__ == "__main__":
