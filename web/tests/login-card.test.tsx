@@ -84,18 +84,22 @@ describe("LoginCard", () => {
     expect(await screen.findByText("Wrong password")).toBeInTheDocument();
   });
 
-  it("lists the seeded demo accounts for manual role testing when the emulator flag is on", () => {
+  it("never shows demo account details, regardless of the emulator flag", () => {
     vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "true");
     render(<LoginCard />);
-    expect(screen.getByText(/asha@acme\.dev/)).toBeInTheDocument();
-    expect(screen.getByText(/dev@acme\.dev/)).toBeInTheDocument();
+    expect(screen.queryByText("Asha")).not.toBeInTheDocument();
+    expect(screen.queryByText(/quick demo accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/asha@acme\.dev/)).not.toBeInTheDocument();
   });
 
-  it("does not list the seeded demo accounts (or the shared password) when the emulator flag is not set", () => {
-    vi.stubEnv("NEXT_PUBLIC_USE_EMULATOR", "false");
+  it("toggles password visibility", () => {
     render(<LoginCard />);
-    expect(screen.queryByText(/asha@acme\.dev/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/correct horse battery staple/)).not.toBeInTheDocument();
+    const passwordInput = screen.getByLabelText(/^password$/i) as HTMLInputElement;
+    expect(passwordInput.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(passwordInput.type).toBe("text");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(passwordInput.type).toBe("password");
   });
 
   it("gives every input an accessible label", () => {

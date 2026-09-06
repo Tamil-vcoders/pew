@@ -1,0 +1,28 @@
+/* Ported from docs/prototype.jsx's `.pew`/`.pew-mono` classes (lines 11-23): Inter for UI
+   text, JetBrains Mono for anything monospace (scores, version numbers, role badges). Font
+   files are loaded via next/font/google in app/layout.tsx, which exposes them as the
+   --font-inter / --font-jetbrains-mono CSS variables applied to <body> below. */
+:root {
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Without this, any element combining width:100% with its own padding (inline styles
+   throughout this app do exactly that -- inputs, textareas, etc.) renders wider than its
+   container under the browser default content-box model, since padding is then added on
+   top of the 100% content width instead of being carved out of it. border-box is the
+   standard fix and is safe app-wide. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: #14161B;
+  color: #ECEAE4;
+}
+
+.pew-mono {
+  font-family: var(--font-mono);
+}
