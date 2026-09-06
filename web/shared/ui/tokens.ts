@@ -6,7 +6,7 @@ export const COLORS = {
   accent: "#7C93F0", accentDim: "#7C93F026",
   good: "#6FBF8B", goodDim: "#6FBF8B1F",
   mid: "#D9A441", midDim: "#D9A4411F",
-  bad: "#DB6B5A", badDim: "#DB6B5A1F",
+  bad: "#DB6B5A", badDim: "#DB6B5A14",
 } as const;
 
 export const ROLE_COLOR: Record<string, string> = {

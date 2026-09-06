@@ -8,7 +8,7 @@ import { datasetApi } from "./datasetApi";
 
 const inputStyle: CSSProperties = {
   background: "#0F1116", color: COLORS.text, border: `0.5px solid ${COLORS.border}`,
-  borderRadius: 6, padding: "6px 8px", fontSize: 12.5, outline: "none", width: "100%",
+  borderRadius: 6, padding: "6px 8px", fontSize: 12.5, width: "100%",
 };
 
 function CaseRow({
@@ -52,6 +52,7 @@ function CaseRow({
             placeholder="Input text…"
             onChange={(e) => setInput(e.target.value)}
             onBlur={() => input !== c.input && commit({ input })}
+            aria-label={`Case ${index + 1} input`}
             style={{ ...inputStyle, flex: 1, resize: "vertical", lineHeight: 1.5 }}
           />
         ) : (
@@ -64,6 +65,7 @@ function CaseRow({
               placeholder="expected…"
               onChange={(e) => setExpected(e.target.value)}
               onBlur={() => expected !== c.expected && commit({ expected })}
+              aria-label={`Case ${index + 1} expected output`}
               style={{ ...inputStyle, width: 120, padding: "4px 6px", fontSize: 11, fontFamily: "ui-monospace, monospace" }}
             />
           ) : (
@@ -117,12 +119,14 @@ function AddCaseForm({ projectId, promptId }: { projectId: string; promptId: str
           value={input}
           placeholder="New case input…"
           onChange={(e) => setInput(e.target.value)}
+          aria-label="New case input"
           style={{ ...inputStyle, flex: 1 }}
         />
         <input
           value={expected}
           placeholder="expected…"
           onChange={(e) => setExpected(e.target.value)}
+          aria-label="New case expected output"
           style={{ ...inputStyle, width: 120 }}
         />
         <Btn tone="ghost" small onClick={submit}>

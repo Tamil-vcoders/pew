@@ -69,4 +69,16 @@ describe("LoginCard", () => {
     expect(screen.queryByText(/asha@acme\.dev/)).not.toBeInTheDocument();
     expect(screen.queryByText(/correct horse battery staple/)).not.toBeInTheDocument();
   });
+
+  it("gives every input an accessible label", () => {
+    render(<LoginCard />);
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+  });
+
+  it("marks the active sign-in/sign-up tab with aria-pressed", () => {
+    render(<LoginCard />);
+    expect(screen.getByRole("button", { name: "Switch to sign in" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Switch to sign up" })).toHaveAttribute("aria-pressed", "false");
+  });
 });

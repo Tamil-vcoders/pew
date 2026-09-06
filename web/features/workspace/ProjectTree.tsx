@@ -75,6 +75,7 @@ function ProjectRow({
             onChange={(e) => setNameDraft(e.target.value)}
             onBlur={commitRename}
             spellCheck={false}
+            aria-label="Project name"
             style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}
           />
         ) : (
@@ -83,7 +84,7 @@ function ProjectRow({
           </span>
         )}
         {can.edit && (
-          <button title="New prompt in this project" onClick={createPrompt}>
+          <button title="New prompt in this project" aria-label="New prompt in this project" onClick={createPrompt}>
             +
           </button>
         )}
@@ -147,10 +148,11 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
           placeholder="name or tag…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search prompts by name or tag"
           style={{ flex: 1 }}
         />
         {can.settings && (
-          <button title="New project" onClick={createProject}>
+          <button title="New project" aria-label="New project" onClick={createProject}>
             +
           </button>
         )}

@@ -96,32 +96,47 @@ export function LoginCard() {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        <button aria-label="Switch to sign in" onClick={() => setMode("signin")}>
+        <button
+          aria-label="Switch to sign in"
+          aria-pressed={mode === "signin"}
+          onClick={() => setMode("signin")}
+          style={{ fontWeight: mode === "signin" ? 700 : 400, color: mode === "signin" ? COLORS.text : COLORS.muted }}
+        >
           Sign in
         </button>
-        <button aria-label="Switch to sign up" onClick={() => setMode("signup")}>
+        <button
+          aria-label="Switch to sign up"
+          aria-pressed={mode === "signup"}
+          onClick={() => setMode("signup")}
+          style={{ fontWeight: mode === "signup" ? 700 : 400, color: mode === "signup" ? COLORS.text : COLORS.muted }}
+        >
           Sign up
         </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         {mode === "signup" && (
-          <input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
+            Full name
+            <input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
         )}
-        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
+          Email
+          <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
+          Password
+          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
         {mode === "signup" && (
-          <input
-            placeholder="Confirm password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
+            Confirm password
+            <input
+              placeholder="Confirm password" type="password" value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </label>
         )}
         {error && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{error}</div>}
         {message && <div style={{ fontSize: 11.5, color: COLORS.good }}>{message}</div>}
