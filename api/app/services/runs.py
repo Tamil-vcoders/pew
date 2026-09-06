@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.domain.models import Case, CaseResult, ModelRates
+from app.domain.models import Case, CaseResult, ModelRates, RunStats
 from app.domain.rendering import render
 from app.domain.scoring import blend_run, code_grade
 from app.ports.llm import LLMCallError, LLMProvider
@@ -25,7 +25,7 @@ async def execute_run(
     rates: dict[str, ModelRates],
     llm: LLMProvider,
     runs: RunRepo,
-) -> None:
+) -> tuple[RunStats, float]:
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
     async def one(idx: int, case: Case) -> CaseResult:
@@ -61,3 +61,4 @@ async def execute_run(
         if r.status == "done"
     )
     await runs.finalize(project_id, prompt_id, run_id, stats=stats, cost_actual=cost_actual)
+    return stats, cost_actual

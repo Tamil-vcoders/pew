@@ -78,3 +78,15 @@ def run_estimate_rows(
         ("Execution", models["execution"], exec_in, TOK["exec"]["out"] * n_cases),
         ("Model grading", models["grading"], TOK["grade"]["in"] * n_cases, TOK["grade"]["out"] * n_cases),
     ]
+
+
+def cycle_estimate_rows(
+    models: dict[str, str], n_cases: int, n_sug: int, exec_tokens_in: int | None = None
+) -> list[tuple[str, str, int, int]]:
+    """Stage rows for a cycle iteration's projected cost (Execution + Model grading +
+    Suggestions), matching docs/prototype.jsx's estimateIteration. The Suggestions row
+    scales with n_sug only — it is drafted once per candidate, not once per case."""
+    return [
+        *run_estimate_rows(models, n_cases, exec_tokens_in=exec_tokens_in),
+        ("Suggestions", models["suggestions"], TOK["suggest"]["in"] * n_sug, TOK["suggest"]["out"] * n_sug),
+    ]

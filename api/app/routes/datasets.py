@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.deps import (
+    get_cycle_repo,
     get_dataset_repo,
     get_llm_provider,
     get_model_registry_repo,
@@ -12,9 +13,17 @@ from app.deps import (
 from app.domain.estimate import TOK, call_cost
 from app.domain.models import Case
 from app.ports.llm import LLMCallError, LLMProvider
-from app.ports.repos import DatasetRepo, ModelRegistryRepo, ProjectRepo
+from app.ports.repos import CycleRepo, DatasetRepo, ModelRegistryRepo, ProjectRepo
 
 router = APIRouter(prefix="/projects/{project_id}/prompts/{prompt_id}/dataset", tags=["dataset"])
+
+
+async def _guard_not_frozen(prompt_id: str, cycles: CycleRepo = Depends(get_cycle_repo)) -> None:
+    """Devspec's dataset-freeze rule: once a cycle's first iteration has started, its
+    dataset is frozen for the owning prompt so scores stay comparable across iterations."""
+    active = await cycles.get_active()
+    if active is not None and active.prompt_id == prompt_id and active.iteration >= 1:
+        raise HTTPException(409, "Dataset is frozen for this cycle")
 
 
 class CreateCaseBody(BaseModel):
@@ -46,7 +55,9 @@ async def list_cases(
     return [_serialize(c) for c in await repo.list_by_prompt(project_id, prompt_id)]
 
 
-@router.post("", status_code=201, dependencies=[Depends(require("contributor"))])
+@router.post(
+    "", status_code=201, dependencies=[Depends(require("contributor")), Depends(_guard_not_frozen)]
+)
 async def create_case(
     project_id: str, prompt_id: str, body: CreateCaseBody, repo: DatasetRepo = Depends(get_dataset_repo)
 ) -> dict[str, object]:
@@ -59,7 +70,9 @@ async def create_case(
     return _serialize(case)
 
 
-@router.patch("/{case_id}", dependencies=[Depends(require("contributor"))])
+@router.patch(
+    "/{case_id}", dependencies=[Depends(require("contributor")), Depends(_guard_not_frozen)]
+)
 async def update_case(
     project_id: str, prompt_id: str, case_id: str, body: UpdateCaseBody,
     repo: DatasetRepo = Depends(get_dataset_repo),
@@ -69,14 +82,18 @@ async def update_case(
     )
 
 
-@router.delete("/{case_id}", status_code=204, dependencies=[Depends(require("contributor"))])
+@router.delete(
+    "/{case_id}", status_code=204, dependencies=[Depends(require("contributor")), Depends(_guard_not_frozen)]
+)
 async def delete_case(
     project_id: str, prompt_id: str, case_id: str, repo: DatasetRepo = Depends(get_dataset_repo)
 ) -> None:
     await repo.delete_case(project_id, prompt_id, case_id)
 
 
-@router.post("/generate", dependencies=[Depends(require("contributor"))])
+@router.post(
+    "/generate", dependencies=[Depends(require("contributor")), Depends(_guard_not_frozen)]
+)
 async def generate_cases(
     project_id: str,
     prompt_id: str,

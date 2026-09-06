@@ -1,15 +1,19 @@
 # api/app/ports/repos.py
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from app.domain.models import (
     Case,
     CaseResult,
     CaseSource,
+    Cycle,
     ModelRates,
     Project,
+    ProjectCfg,
     Prompt,
+    Run,
     RunStats,
     User,
     Version,
@@ -47,6 +51,8 @@ class ProjectRepo(Protocol):
     async def get(self, project_id: str) -> Project | None: ...
 
     async def rename(self, project_id: str, name: str) -> Project: ...
+
+    async def update_cfg(self, project_id: str, cfg: ProjectCfg) -> Project: ...
 
 
 class PromptRepo(Protocol):
@@ -108,6 +114,12 @@ class DatasetRepo(Protocol):
 
 
 class RunRepo(Protocol):
+    async def get(self, project_id: str, prompt_id: str, run_id: str) -> Run | None:
+        """Reads a finalized (or in-progress) run doc — used by the cycle's attended-mode
+        "continue to checks" transition to re-read a just-finalized run's composite without
+        re-deriving it in the service layer."""
+        ...
+
     async def create_run(
         self, project_id: str, prompt_id: str, *, version_n: int, started_by: str
     ) -> str:
@@ -132,3 +144,29 @@ class RunRepo(Protocol):
 
 class ModelRegistryRepo(Protocol):
     async def get_all(self) -> dict[str, ModelRates]: ...
+
+
+class CycleRepo(Protocol):
+    async def get_active(self) -> Cycle | None:
+        """Plain (non-transactional) read of the currently-active cycle, if any — used only
+        for informational gating (dataset freeze, run-block, cfg-lock, "elsewhere" banner,
+        header chip). Does NOT enforce one-active-cycle by itself; create() does that with a
+        real Firestore precondition."""
+        ...
+
+    async def get(self, cycle_id: str) -> Cycle | None: ...
+
+    async def create(self, cycle: Cycle) -> Cycle:
+        """Raises ValueError if a cycle is already active anywhere (AC-F.13 / devspec's v1
+        one-active-cycle-globally simplification). cycle.id is ignored on input; the
+        returned Cycle carries the generated doc id."""
+        ...
+
+    async def save(self, cycle: Cycle, *, new_log_messages: Sequence[str] = ()) -> None:
+        """Rewrites every mutable field of the cycle doc from `cycle`; never touches
+        promptId/projectId/configSnapshot/startedBy (write-once at create — this is the
+        entire config-snapshot isolation mechanism: nothing ever re-reads the live project
+        doc after create()). Appends new_log_messages to the doc's log. If
+        cycle.status == "ended", also clears the one-active-cycle marker in the same
+        transaction."""
+        ...

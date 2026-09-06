@@ -1,6 +1,12 @@
 import pytest
 
-from app.domain.estimate import TOK, build_estimate, call_cost, run_estimate_rows
+from app.domain.estimate import (
+    TOK,
+    build_estimate,
+    call_cost,
+    cycle_estimate_rows,
+    run_estimate_rows,
+)
 from app.domain.models import ModelRates
 
 RATES = {
@@ -52,3 +58,18 @@ def test_build_estimate_scales_roughly_linearly_with_case_count():
     est_1 = build_estimate(run_estimate_rows(MODELS, n_cases=1), RATES)
     est_10 = build_estimate(run_estimate_rows(MODELS, n_cases=10), RATES)
     assert est_10.total_cost == pytest.approx(est_1.total_cost * 10)
+
+
+def test_cycle_estimate_rows_adds_a_suggestions_row_scaled_by_n_sug():
+    rows = cycle_estimate_rows(MODELS, n_cases=5, n_sug=3)
+    assert rows == [
+        ("Execution", "gemini-2.5-pro", TOK["exec"]["in"] * 5, TOK["exec"]["out"] * 5),
+        ("Model grading", "gemini-2.5-flash", TOK["grade"]["in"] * 5, TOK["grade"]["out"] * 5),
+        ("Suggestions", "gemini-2.5-flash", TOK["suggest"]["in"] * 3, TOK["suggest"]["out"] * 3),
+    ]
+
+
+def test_cycle_estimate_rows_suggestions_row_ignores_case_count():
+    rows_few_cases = cycle_estimate_rows(MODELS, n_cases=1, n_sug=2)
+    rows_many_cases = cycle_estimate_rows(MODELS, n_cases=20, n_sug=2)
+    assert rows_few_cases[2][2:] == rows_many_cases[2][2:]

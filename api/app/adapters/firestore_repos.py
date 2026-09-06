@@ -1,6 +1,8 @@
 # api/app/adapters/firestore_repos.py
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -10,14 +12,21 @@ from app.domain.models import (
     Case,
     CaseResult,
     CaseSource,
+    Cycle,
+    CycleConfigSnapshot,
+    CycleLogEntry,
+    CyclePending,
+    CycleScore,
     ModelRates,
     Project,
     ProjectCfg,
     Prompt,
+    Run,
     RunStats,
     User,
     Version,
 )
+from app.domain.suggestions import Suggestion
 from app.ports.repos import DATASET_CASE_CAP, AuditRepo
 
 
@@ -184,6 +193,12 @@ class FirestoreProjectRepo:
     async def rename(self, project_id: str, name: str) -> Project:
         ref = self._collection().document(project_id)
         await ref.update({"name": name})
+        snap = await ref.get()
+        return _project_from_snap(snap)
+
+    async def update_cfg(self, project_id: str, cfg: ProjectCfg) -> Project:
+        ref = self._collection().document(project_id)
+        await ref.update({"cfg": _cfg_to_dict(cfg)})
         snap = await ref.get()
         return _project_from_snap(snap)
 
@@ -488,6 +503,23 @@ def _case_result_to_dict(result: CaseResult) -> dict[str, Any]:
     }
 
 
+def _run_from_snap(snap: firestore.DocumentSnapshot) -> Run:
+    data = snap.to_dict() or {}
+    started = data.get("startedAt")
+    return Run(
+        id=snap.id,
+        version_n=data.get("versionN", 0),
+        status=data.get("status", "running"),
+        composite=data.get("composite"),
+        code_avg=data.get("codeAvg"),
+        model_avg=data.get("modelAvg"),
+        cost_estimate=data.get("costEstimate"),
+        cost_actual=data.get("costActual"),
+        started_by=data.get("startedBy", ""),
+        started_at=started if isinstance(started, datetime) else None,
+    )
+
+
 class FirestoreRunRepo:
     def __init__(self, client: firestore.AsyncClient) -> None:
         self._client = client
@@ -504,6 +536,10 @@ class FirestoreRunRepo:
             self._prompt_ref(project_id, prompt_id).collection("runs")
         )
         return collection
+
+    async def get(self, project_id: str, prompt_id: str, run_id: str) -> Run | None:
+        snap = await self._runs_collection(project_id, prompt_id).document(run_id).get()
+        return _run_from_snap(snap) if snap.exists else None
 
     async def create_run(
         self, project_id: str, prompt_id: str, *, version_n: int, started_by: str
@@ -579,3 +615,199 @@ class FirestoreModelRegistryRepo:
             snap.id: _model_rates_from_snap(snap)
             async for snap in self._client.collection("modelRegistry").stream()
         }
+
+
+def _suggestion_to_dict(s: Suggestion) -> dict[str, Any]:
+    return {
+        "ruleId": s.rule_id,
+        "technique": s.technique,
+        "evidence": s.evidence,
+        "oldText": s.old_text,
+        "newText": s.new_text,
+    }
+
+
+def _suggestion_from_dict(data: dict[str, Any]) -> Suggestion:
+    return Suggestion(
+        rule_id=data.get("ruleId", ""),
+        technique=data.get("technique", ""),
+        evidence=data.get("evidence", ""),
+        old_text=data.get("oldText", ""),
+        new_text=data.get("newText", ""),
+    )
+
+
+def _cycle_config_to_dict(cfg: CycleConfigSnapshot) -> dict[str, Any]:
+    return {
+        "target": cfg.target,
+        "maxIter": cfg.max_iter,
+        "budget": cfg.budget,
+        "nSug": cfg.n_sug,
+        "auto": cfg.auto,
+        "weights": cfg.weights,
+        "models": cfg.models,
+    }
+
+
+def _cycle_config_from_dict(data: dict[str, Any]) -> CycleConfigSnapshot:
+    return CycleConfigSnapshot(
+        target=data.get("target", 8.0),
+        max_iter=data.get("maxIter", 4),
+        budget=data.get("budget", 0.6),
+        n_sug=data.get("nSug", 2),
+        auto=data.get("auto", False),
+        weights=data.get("weights", {}),
+        models=data.get("models", {}),
+    )
+
+
+def _cycle_to_dict(cycle: Cycle) -> dict[str, Any]:
+    """Everything except startedAt (set only at create, via SERVER_TIMESTAMP)."""
+    return {
+        "promptId": cycle.prompt_id,
+        "projectId": cycle.project_id,
+        "status": cycle.status,
+        "stage": cycle.stage,
+        "iteration": cycle.iteration,
+        "spent": cycle.spent,
+        "scores": [{"n": s.n, "score": s.score} for s in cycle.scores],
+        "endReason": cycle.end_reason,
+        "bestN": cycle.best_n,
+        "warnedFlat": cycle.warned_flat,
+        "currentVersionN": cycle.current_version_n,
+        "currentRunId": cycle.current_run_id,
+        "pending": (
+            {
+                "candidates": [_suggestion_to_dict(s) for s in cycle.pending.candidates],
+                "selected": cycle.pending.selected,
+            }
+            if cycle.pending is not None
+            else None
+        ),
+        "configSnapshot": _cycle_config_to_dict(cycle.config),
+        "log": [{"ts": entry.ts, "message": entry.message} for entry in cycle.log],
+        "startedBy": cycle.started_by,
+    }
+
+
+def _cycle_from_snap(snap: firestore.DocumentSnapshot) -> Cycle:
+    data = snap.to_dict() or {}
+    pending_data = data.get("pending")
+    pending = (
+        CyclePending(
+            candidates=[_suggestion_from_dict(c) for c in pending_data.get("candidates", [])],
+            selected=pending_data.get("selected", 0),
+        )
+        if pending_data is not None
+        else None
+    )
+    log: list[CycleLogEntry] = []
+    for entry in data.get("log", []):
+        ts = entry.get("ts")
+        log.append(CycleLogEntry(ts=ts if isinstance(ts, datetime) else datetime.now(UTC), message=entry.get("message", "")))
+    return Cycle(
+        id=snap.id,
+        prompt_id=data.get("promptId", ""),
+        project_id=data.get("projectId", ""),
+        status=data.get("status", "active"),
+        stage=data.get("stage", "dataset"),
+        iteration=data.get("iteration", 0),
+        spent=data.get("spent", 0.0),
+        scores=[CycleScore(n=s["n"], score=s["score"]) for s in data.get("scores", [])],
+        end_reason=data.get("endReason"),
+        best_n=data.get("bestN"),
+        warned_flat=data.get("warnedFlat", False),
+        current_version_n=data.get("currentVersionN"),
+        current_run_id=data.get("currentRunId"),
+        pending=pending,
+        config=_cycle_config_from_dict(data.get("configSnapshot", {})),
+        log=log,
+        started_by=data.get("startedBy", ""),
+    )
+
+
+class FirestoreCycleRepo:
+    """One-active-cycle-globally is enforced with a keyed marker document at
+    meta/activeCycle, written via `transaction.create()` — a real Firestore precondition
+    that fails atomically at commit if the doc already exists, unlike a `.where(...)` query
+    (see FirestorePromptRepo.create's note on why a query is not a hard guarantee)."""
+
+    _MARKER_COLLECTION = "meta"
+    _MARKER_DOC = "activeCycle"
+
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _collection(self) -> firestore.AsyncCollectionReference:
+        return self._client.collection("cycles")
+
+    def _marker_ref(self) -> firestore.AsyncDocumentReference:
+        return self._client.collection(self._MARKER_COLLECTION).document(self._MARKER_DOC)
+
+    async def get_active(self) -> Cycle | None:
+        query = self._collection().where("status", "==", "active").order_by("startedAt").limit(1)
+        async for snap in query.stream():
+            return _cycle_from_snap(snap)
+        return None
+
+    async def get(self, cycle_id: str) -> Cycle | None:
+        snap = await self._collection().document(cycle_id).get()
+        return _cycle_from_snap(snap) if snap.exists else None
+
+    async def create(self, cycle: Cycle) -> Cycle:
+        marker_ref = self._marker_ref()
+        collection = self._collection()
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> tuple[str, datetime]:
+            cycle_ref = collection.document()
+            started_at = datetime.now(UTC)
+            transaction.create(
+                marker_ref,
+                {"cycleId": cycle_ref.id, "promptId": cycle.prompt_id, "startedAt": started_at},
+            )
+            payload = _cycle_to_dict(cycle)
+            payload["startedAt"] = firestore.SERVER_TIMESTAMP
+            transaction.set(cycle_ref, payload)
+            return cycle_ref.id, started_at
+
+        transaction = self._client.transaction()
+        try:
+            cycle_id, _ = await _run(transaction)
+        except Exception as exc:
+            # Firestore's create()-conflict exception type is not part of its documented
+            # public surface, and this is the one place a failed marker-doc precondition
+            # must become a domain-level ValueError so routes can map it to a 409; see
+            # FirestoreCycleRepo's class docstring.
+            raise ValueError("A cycle is already active") from exc
+        return replace(cycle, id=cycle_id)
+
+    async def save(self, cycle: Cycle, *, new_log_messages: Sequence[str] = ()) -> None:
+        cycle_ref = self._collection().document(cycle.id)
+        patch: dict[str, Any] = _cycle_to_dict(cycle)
+        # promptId/projectId/configSnapshot/startedBy are write-once at create() — this IS
+        # the config-snapshot isolation mechanism, so they are deliberately never rewritten.
+        for immutable_field in ("promptId", "projectId", "configSnapshot", "startedBy"):
+            patch.pop(immutable_field, None)
+        if new_log_messages:
+            patch["log"] = firestore.ArrayUnion(
+                [{"ts": datetime.now(UTC), "message": msg} for msg in new_log_messages]
+            )
+        else:
+            patch.pop("log", None)
+
+        if cycle.status != "ended":
+            await cycle_ref.update(patch)
+            return
+
+        marker_ref = self._marker_ref()
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> None:
+            marker_snap = await _snapshot(transaction, marker_ref)
+            transaction.update(cycle_ref, patch)
+            if marker_snap.exists and marker_snap.get("cycleId") == cycle.id:
+                transaction.delete(marker_ref)
+
+        transaction = self._client.transaction()
+        await _run(transaction)

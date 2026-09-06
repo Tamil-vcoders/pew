@@ -16,6 +16,7 @@ from app.domain.models import User
 from app.ports.llm import LLMProvider
 from app.ports.repos import (
     AuditRepo,
+    CycleRepo,
     DatasetRepo,
     ModelRegistryRepo,
     ProjectRepo,
@@ -131,9 +132,24 @@ def get_model_registry_repo(
     return FirestoreModelRegistryRepo(client)
 
 
+def get_cycle_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> CycleRepo:
+    from app.adapters.firestore_repos import FirestoreCycleRepo
+
+    return FirestoreCycleRepo(client)
+
+
 def get_llm_provider() -> LLMProvider:
     """Real Gemini by default; tests override this via `app.dependency_overrides` to inject
-    `FakeLLMProvider` so CI never spends tokens (see tests/integration/conftest.py)."""
+    `FakeLLMProvider` so CI never spends tokens (see tests/integration/conftest.py).
+
+    Settings.use_fake_llm gives the same swap outside of tests — devspec §15's own
+    rehearsal-mode mitigation ("a FakeLLMProvider flag for rehearsals") — so a locally
+    running server can be demoed/verified without a working Gemini key or free-tier rate
+    limits. Never set in deploy.yml."""
+    if get_settings().use_fake_llm:
+        from app.adapters.fake_llm import FakeLLMProvider
+
+        return FakeLLMProvider()
     return GeminiProvider(get_settings().gemini_api_key)
 
 

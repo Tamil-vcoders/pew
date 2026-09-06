@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
+from app.domain.suggestions import Suggestion
+
 ROLES = ("viewer", "contributor", "maintainer", "administrator")
 
 
@@ -151,3 +153,64 @@ class ModelRates:
     rate_in_per_1m: float
     rate_out_per_1m: float
     enabled: bool
+
+
+CycleStage = Literal["dataset", "preview", "running", "grading", "checking", "suggesting", "ended"]
+CycleStatus = Literal["active", "ended"]
+CycleEndReason = Literal[
+    "target-met", "iteration-cap", "budget-cap", "user-stopped", "no-suggestions", "not-converging"
+]
+
+
+@dataclass(frozen=True)
+class CycleConfigSnapshot:
+    """A copy of ProjectCfg taken at cycle start (devspec §3's "snapshot config" pattern) —
+    the comparability tuple stays fixed for the cycle's lifetime even if a maintainer edits
+    the live project cfg mid-cycle."""
+
+    target: float
+    max_iter: int
+    budget: float
+    n_sug: int
+    auto: bool
+    weights: dict[str, float]
+    models: dict[str, str]
+
+
+@dataclass(frozen=True)
+class CycleScore:
+    n: int
+    score: float
+
+
+@dataclass(frozen=True)
+class CyclePending:
+    candidates: list[Suggestion]
+    selected: int
+
+
+@dataclass(frozen=True)
+class CycleLogEntry:
+    ts: datetime
+    message: str
+
+
+@dataclass(frozen=True)
+class Cycle:
+    id: str
+    prompt_id: str
+    project_id: str
+    status: CycleStatus
+    stage: CycleStage
+    iteration: int
+    spent: float
+    scores: list[CycleScore]
+    end_reason: CycleEndReason | None
+    best_n: int | None
+    warned_flat: bool
+    current_version_n: int | None
+    current_run_id: str | None
+    pending: CyclePending | None
+    config: CycleConfigSnapshot
+    log: list[CycleLogEntry]
+    started_by: str

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.adapters import inline_tasks
 from app.deps import (
     current_user,
+    get_cycle_repo,
     get_dataset_repo,
     get_llm_provider,
     get_model_registry_repo,
@@ -19,6 +20,7 @@ from app.domain.models import User
 from app.domain.rendering import render
 from app.ports.llm import LLMProvider
 from app.ports.repos import (
+    CycleRepo,
     DatasetRepo,
     ModelRegistryRepo,
     ProjectRepo,
@@ -66,11 +68,17 @@ async def start_run(
     runs: RunRepo = Depends(get_run_repo),
     registry: ModelRegistryRepo = Depends(get_model_registry_repo),
     llm: LLMProvider = Depends(get_llm_provider),
+    cycles: CycleRepo = Depends(get_cycle_repo),
 ) -> dict[str, object]:
     project = await projects.get(project_id)
     prompt = await prompts.get(project_id, prompt_id)
     if project is None or prompt is None:
         raise HTTPException(404, "Project or prompt not found")
+
+    # v1 simplification (devspec §1.2): one active cycle at a time, globally — a manual
+    # "Run once" is blocked while ANY cycle is active anywhere, not just this prompt's.
+    if await cycles.get_active() is not None:
+        raise HTTPException(409, "A cycle is active — manual runs are blocked until it ends")
 
     current_version = await versions.get(project_id, prompt_id, prompt.latest_version) if prompt.latest_version else None
     if current_version is not None and body.text == current_version.text:

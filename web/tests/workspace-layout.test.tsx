@@ -12,6 +12,12 @@ vi.mock("next/link", () => ({
 vi.mock("../features/workspace", () => ({
   ProjectTree: ({ role }: { role: string | null }) => <div>tree for {role ?? "signed out"}</div>,
 }));
+// The header chip's own behavior (onSnapshot subscriptions, etc.) is covered by
+// tests/use-cycle.test.tsx and its own component tests — stub it here so this layout test
+// doesn't need real Firestore wiring just to render the page shell.
+vi.mock("../features/cycle", () => ({
+  CycleStatusChip: () => null,
+}));
 // The layout imports AuthGuard from its own file directly (not the features/auth index),
 // so AuthGuard runs for real here — it only needs useAuth (mocked below, by file, matching
 // AuthGuard's own "./useAuth" import) and next/navigation's useRouter (mocked above).

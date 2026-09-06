@@ -141,6 +141,7 @@ export function DatasetTab({
   draft,
   cases,
   can,
+  locked = false,
 }: {
   projectId: string;
   promptId: string;
@@ -148,6 +149,10 @@ export function DatasetTab({
   draft: string;
   cases: Case[];
   can: Capabilities;
+  /** True once the owning cycle's iteration >= 1 (devspec: the dataset freezes once the
+   * first run starts so scores stay comparable). Matches the API's 409 condition exactly,
+   * so this never shows an editable form the server would reject. */
+  locked?: boolean;
 }) {
   const [genLog, setGenLog] = useState<string[]>([]);
   const [genError, setGenError] = useState<string | null>(null);
@@ -169,10 +174,14 @@ export function DatasetTab({
     }
   }
 
-  if (!can.edit) {
+  if (!can.edit || locked) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 11.5, color: COLORS.faint }}>{requiresRoleCaption("contributor")}</div>
+        <div style={{ fontSize: 11.5, color: COLORS.faint }}>
+          {locked
+            ? "Locked while the cycle runs — editable again once the cycle ends."
+            : requiresRoleCaption("contributor")}
+        </div>
         {cases.map((c, i) => (
           <CaseRow key={c.id} projectId={projectId} promptId={promptId} case={c} index={i} canEdit={false} />
         ))}

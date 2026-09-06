@@ -4,8 +4,9 @@ from pydantic import BaseModel, Field
 
 from app.deps import get_llm_provider, get_project_repo, require
 from app.domain.suggestions import Suggestion, build_suggestions
-from app.ports.llm import LLMCallError, LLMProvider
+from app.ports.llm import LLMProvider
 from app.ports.repos import ProjectRepo
+from app.services.suggestions import draft_suggestions
 
 router = APIRouter(prefix="/projects/{project_id}/prompts/{prompt_id}/suggestions", tags=["suggestions"])
 
@@ -38,11 +39,5 @@ async def generate_suggestions(
         raise HTTPException(404, "Project not found")
     model = project.cfg.models["suggestions"]
 
-    drafted: list[Suggestion] = []
-    for s in suggestions:
-        try:
-            draft = await llm.suggest(body.text, s.technique, s.evidence, model)
-            drafted.append(Suggestion(rule_id=s.rule_id, technique=s.technique, evidence=s.evidence, old_text=s.old_text, new_text=draft.text))
-        except LLMCallError:
-            drafted.append(s)  # fall back to the static fixer's rewrite
+    drafted = await draft_suggestions(suggestions, model, llm)
     return [_serialize(s) for s in drafted]

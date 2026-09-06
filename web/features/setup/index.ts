@@ -1,1 +1,1 @@
-export {};
+export { SetupTab } from "./SetupTab";
