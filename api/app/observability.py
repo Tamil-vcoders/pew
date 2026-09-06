@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from typing import TextIO
 
 _ALLOWED_KEYS = frozenset({
     "event", "run_id", "cycle_id", "project_id", "prompt_id", "uid", "case_id", "index",
@@ -18,9 +19,22 @@ _ALLOWED_KEYS = frozenset({
     "n_cases", "model",
 })
 
+
+class _LiveStdoutHandler(logging.StreamHandler[TextIO]):
+    """Re-resolves sys.stdout on every emit (rather than binding it once at construction,
+    which is what plain StreamHandler(sys.stdout) does) — needed because this module is
+    imported once at process/test-collection start, before pytest's capsys fixture has
+    swapped sys.stdout for a given test; binding early means capsys can never see this
+    handler's output otherwise."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.stream = sys.stdout
+        super().emit(record)
+
+
 _logger = logging.getLogger("pew")
 if not _logger.handlers:
-    _handler = logging.StreamHandler(sys.stdout)
+    _handler = _LiveStdoutHandler()
     _handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(_handler)
     _logger.setLevel(logging.INFO)

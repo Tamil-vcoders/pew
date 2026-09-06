@@ -4,16 +4,10 @@ the prompt and case content, then assert none of those sentinels ever reach capt
 prompt/case content per the content-privacy rule — even test fixtures must never look like
 real data.
 
-Uses `capfd` (file-descriptor-level capture), not `capsys`: app.observability's StreamHandler
-is constructed once at import/collection time, binding a `sys.stdout` object reference that
-predates any per-test capsys monkeypatch, so capsys (object-level) can never observe its
-writes here — verified empirically. capfd intercepts at the OS fd level instead, which is
-also the more faithful model of what production Cloud Logging actually scrapes.
-This test must run with `-s` (`--capture=no`): under the default global fd-capture, the
-module-level handler's stream binds to the *global* capture's redirected fd at collection
-time, one layer removed from the fresh per-test fd swap a capfd fixture request performs —
-so `capfd.readouterr()` sees nothing. With `-s` disabling the global layer, the per-test
-capfd fixture is the only redirection in play and the handler's writes land in it correctly.
+Uses `capsys` (object-level capture): app.observability's handler is a _LiveStdoutHandler
+that re-resolves `sys.stdout` on every emit rather than binding it once at construction, so
+it always writes to whatever object `sys.stdout` currently points to — including capsys's
+per-test monkeypatched replacement. No special pytest flags (e.g. `-s`) are required.
 """
 from __future__ import annotations
 
@@ -29,7 +23,7 @@ SENTINEL_CASE_INPUT = "SENTINEL_CASE_INPUT_MARKER_91cd"
 SENTINEL_CASE_EXPECTED = "SENTINEL_CASE_EXPECTED_MARKER_04ee"
 
 
-async def test_a_full_cycle_never_logs_prompt_or_case_content(capfd):
+async def test_a_full_cycle_never_logs_prompt_or_case_content(capsys):
     await seed_model_registry()
     user = create_emulator_user("asha@acme.dev")
     client.get("/me", headers=auth_headers(user["id_token"]))
@@ -55,9 +49,9 @@ async def test_a_full_cycle_never_logs_prompt_or_case_content(capfd):
     client.post(f"/cycles/{cycle_id}/continue", headers=headers)
     client.post(f"/cycles/{cycle_id}/stop", headers=headers)
 
-    captured = capfd.readouterr().out
+    captured = capsys.readouterr().out
     # Non-vacuousness guard: fail loudly (rather than trivially passing on empty capture) if
-    # log_event's output stopped reaching capfd for any reason — see module docstring.
+    # log_event's output stopped reaching capsys for any reason — see module docstring.
     assert "cycle_started" in captured and "cycle_ended" in captured and "run_finalized" in captured
     assert SENTINEL_PROMPT not in captured
     assert SENTINEL_CASE_INPUT not in captured
