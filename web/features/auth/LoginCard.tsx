@@ -1,7 +1,7 @@
-// web/features/auth/LoginCard.tsx
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Eye, EyeOff, KeyRound, Lock, Mail, UserCircle } from "lucide-react";
 import { COLORS } from "@/shared/ui/tokens";
 import { Btn } from "@/shared/ui/Btn";
 import { resetPassword, signIn, signInWithGoogle, signUp } from "./authService";
@@ -9,27 +9,35 @@ import { useAuth } from "./useAuth";
 
 type Mode = "signin" | "signup";
 
-// Quick demo-account auto-login buttons from the prototype (docs/prototype.jsx lines
-// 553-566) are intentionally NOT ported here. The prototype fakes authentication
-// entirely ("no real authentication happens", prototype.jsx line 569); this build calls
-// real Firebase Auth, so a one-click role switcher would be an actual auth bypass, not a
-// prototype convenience. Instead we list the seeded demo accounts as plain text below the
-// form so a human tester can still sign in manually as any role. This list (and the shared
-// password) must never reach a production build, so it's gated behind
-// NEXT_PUBLIC_USE_EMULATOR === "true" below; Next.js inlines NEXT_PUBLIC_* vars at build
-// time, so as long as NEXT_PUBLIC_USE_EMULATOR is actually set to a literal value (not left
-// unset) at build time, webpack can statically evaluate the check and dead-code-eliminate
-// the whole block instead of shipping it. web/Dockerfile declares an ARG/ENV pair for this
-// var with a "false" default, so `docker build` always gets a concrete value here — including
-// a bare `docker build .` with no --build-arg passed — but a from-scratch `npm run build`
-// invocation that doesn't set the env var will NOT eliminate this block; always set
-// NEXT_PUBLIC_USE_EMULATOR explicitly when building for production outside the Dockerfile.
-const DEMO_ACCOUNTS = [
-  "asha@acme.dev (administrator)",
-  "vikram@acme.dev (maintainer)",
-  "meera@acme.dev (contributor)",
-  "dev@acme.dev (viewer)",
-];
+// The prototype's quick demo-account list (docs/prototype.jsx lines 553-566) is intentionally
+// not shown here at all -- not even as a read-only visual list. Seeded demo credentials for
+// manual role testing are documented in docs/demo-script.md instead.
+
+const inputStyle: React.CSSProperties = {
+  background: "#0F1116",
+  color: COLORS.text,
+  border: `0.5px solid ${COLORS.border}`,
+  borderRadius: 6,
+  padding: "9px 8px",
+  fontSize: 12.5,
+  outline: "none",
+  width: "100%",
+};
+
+function IconField({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ position: "absolute", left: 9, top: 9, color: COLORS.faint, display: "flex" }}>{icon}</div>
+      {children}
+    </div>
+  );
+}
 
 export function LoginCard() {
   const router = useRouter();
@@ -39,6 +47,7 @@ export function LoginCard() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -103,18 +112,53 @@ export function LoginCard() {
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: "0 auto", padding: 24, color: COLORS.text }}>
-      <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Prompt Evaluation Workbench</div>
-      <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 14 }}>
-        {mode === "signin" ? "Sign in to your workspace" : "Create your account"}
+    <div style={{ maxWidth: 400, margin: "0 auto", padding: 24, color: COLORS.text }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 14,
+            background: COLORS.accentDim,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <KeyRound size={26} color={COLORS.accent} />
+        </div>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 700, textAlign: "center", marginBottom: 4 }}>
+        Prompt Evaluation Workbench
+      </div>
+      <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 18, textAlign: "center" }}>
+        {mode === "signin" ? "Sign in to VCODERS AI LLP workspace" : "Create your account"}
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          background: COLORS.surface2,
+          borderRadius: 8,
+          padding: 3,
+          marginBottom: 18,
+        }}
+      >
         <button
           aria-label="Switch to sign in"
           aria-pressed={mode === "signin"}
           onClick={() => setMode("signin")}
-          style={{ fontWeight: mode === "signin" ? 700 : 400, color: mode === "signin" ? COLORS.text : COLORS.muted }}
+          style={{
+            flex: 1,
+            background: mode === "signin" ? COLORS.surface : "transparent",
+            border: mode === "signin" ? `0.5px solid ${COLORS.border}` : "none",
+            borderRadius: 6,
+            padding: "8px 0",
+            fontSize: 13,
+            fontWeight: 600,
+            color: mode === "signin" ? COLORS.text : COLORS.faint,
+            cursor: "pointer",
+          }}
         >
           Sign in
         </button>
@@ -122,61 +166,143 @@ export function LoginCard() {
           aria-label="Switch to sign up"
           aria-pressed={mode === "signup"}
           onClick={() => setMode("signup")}
-          style={{ fontWeight: mode === "signup" ? 700 : 400, color: mode === "signup" ? COLORS.text : COLORS.muted }}
+          style={{
+            flex: 1,
+            background: mode === "signup" ? COLORS.surface : "transparent",
+            border: mode === "signup" ? `0.5px solid ${COLORS.border}` : "none",
+            borderRadius: 6,
+            padding: "8px 0",
+            fontSize: 13,
+            fontWeight: 600,
+            color: mode === "signup" ? COLORS.text : COLORS.faint,
+            cursor: "pointer",
+          }}
         >
           Sign up
         </button>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {mode === "signup" && (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
-            Full name
-            <input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-        )}
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
-          Email
-          <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
-          Password
-          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        {mode === "signup" && (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10.5, color: COLORS.faint }}>
-            Confirm password
+          <IconField icon={<UserCircle size={14} />}>
             <input
-              placeholder="Confirm password" type="password" value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              aria-label="Full name"
+              placeholder="Full name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ ...inputStyle, paddingLeft: 30 }}
             />
-          </label>
+          </IconField>
+        )}
+        <IconField icon={<Mail size={14} />}>
+          <input
+            aria-label="Email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: 30 }}
+          />
+        </IconField>
+        <IconField icon={<Lock size={14} />}>
+          <input
+            aria-label="Password"
+            placeholder="Password"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: 30, paddingRight: 34 }}
+          />
+          <button
+            type="button"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            onClick={() => setShowPassword((prev) => !prev)}
+            style={{
+              position: "absolute",
+              right: 8,
+              top: 7,
+              background: "none",
+              border: "none",
+              color: COLORS.faint,
+              cursor: "pointer",
+              padding: 0,
+              display: "flex",
+            }}
+          >
+            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </IconField>
+        {mode === "signup" && (
+          <IconField icon={<Lock size={14} />}>
+            <input
+              aria-label="Confirm password"
+              placeholder="Confirm password"
+              type={showPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              style={{ ...inputStyle, paddingLeft: 30 }}
+            />
+          </IconField>
         )}
         {error && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{error}</div>}
         {message && <div style={{ fontSize: 11.5, color: COLORS.good }}>{message}</div>}
         <Btn onClick={submit}>{mode === "signin" ? "Sign in" : "Create account"}</Btn>
         {mode === "signin" && (
-          <button onClick={reset} style={{ background: "none", border: "none", color: COLORS.accent, textAlign: "left" }}>
+          <button
+            onClick={reset}
+            style={{ background: "none", border: "none", color: COLORS.accent, textAlign: "left", cursor: "pointer", padding: 0, fontSize: 12.5 }}
+          >
             Forgot password?
           </button>
         )}
       </div>
 
-      <div style={{ margin: "14px 0", fontSize: 10.5, color: COLORS.faint, textAlign: "center" }}>or</div>
-      <Btn tone="ghost" onClick={google}>
-        Continue with Google
-      </Btn>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0" }}>
+        <div style={{ flex: 1, height: 0.5, background: COLORS.border }} />
+        <span style={{ fontSize: 11, color: COLORS.faint }}>or</span>
+        <div style={{ flex: 1, height: 0.5, background: COLORS.border }} />
+      </div>
 
-      {process.env.NEXT_PUBLIC_USE_EMULATOR === "true" && (
-        <div style={{ marginTop: 16, fontSize: 10.5, color: COLORS.faint, lineHeight: 1.7 }}>
-          Seeded demo accounts for role testing (password: &quot;correct horse battery staple&quot;):
-          <ul>
-            {DEMO_ACCOUNTS.map((account) => (
-              <li key={account}>{account}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <button
+        onClick={google}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          background: COLORS.surface,
+          border: `0.5px solid ${COLORS.border}`,
+          borderRadius: 8,
+          padding: "10px 0",
+          fontSize: 13.5,
+          fontWeight: 600,
+          color: COLORS.text,
+          cursor: "pointer",
+        }}
+      >
+        <span
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            background: "#fff",
+            color: "#4285F4",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 11.5,
+            fontWeight: 700,
+          }}
+        >
+          G
+        </span>
+        Continue with Google
+      </button>
+
+      <div style={{ fontSize: 10.5, color: COLORS.faint, lineHeight: 1.6, marginTop: 18, textAlign: "center" }}>
+        Signed in via Firebase Auth (email/password + Google); roles are read fresh from the
+        workspace and enforced server-side by the API on every endpoint.
+      </div>
     </div>
   );
 }
