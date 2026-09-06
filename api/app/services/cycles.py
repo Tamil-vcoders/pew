@@ -251,9 +251,14 @@ async def continue_cycle(cycle_id: str, *, deps: CycleDeps) -> Cycle:
         if cycle.current_version_n is None or cycle.current_run_id is None:
             raise ValueError("No scored run to continue from")
         run = await deps.runs.get(cycle.project_id, cycle.prompt_id, cycle.current_run_id)
-        if run is None or run.composite is None:
+        if run is None or run.status != "complete":
             raise ValueError("Run is not finalized yet")
-        return await _advance_after_score(cycle, run.composite, deps=deps)
+        # A run where every case errored (quota exhaustion, persistent 5xx, ...) finalizes
+        # with composite=None (nothing to average) but status="complete" — treat it as the
+        # worst possible score rather than blocking the cycle forever, matching auto mode's
+        # _run_iteration_and_advance (Phase 4), which already does this.
+        composite = run.composite if run.composite is not None else 0.0
+        return await _advance_after_score(cycle, composite, deps=deps)
 
     if cycle.stage == "checking" and cycle.warned_flat:
         if cycle.current_version_n is None:
