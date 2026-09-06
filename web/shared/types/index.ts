@@ -11,6 +11,26 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+// Phase 5 — admin/members surface (web/features/members, web/features/settings-global).
+export const MemberSchema = z.object({
+  uid: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: RoleSchema,
+  createdAt: z.string(),
+});
+export type Member = z.infer<typeof MemberSchema>;
+
+export const AuditEntrySchema = z.object({
+  actor: z.string(),
+  action: z.string(),
+  subject: z.string(),
+  before: z.record(z.string(), z.unknown()).nullable(),
+  after: z.record(z.string(), z.unknown()).nullable(),
+  ts: z.string(),
+});
+export type AuditEntry = z.infer<typeof AuditEntrySchema>;
+
 export const ProjectCfgSchema = z.object({
   target: z.number(),
   maxIter: z.number(),
@@ -163,3 +183,26 @@ export const EstimateSchema = z.object({
   nCases: z.number(),
 });
 export type Estimate = z.infer<typeof EstimateSchema>;
+
+// Phase 5 — global settings (web/features/settings-global).
+export const ModelRatesSchema = z.object({
+  label: z.string(),
+  rateInPer1M: z.number(),
+  rateOutPer1M: z.number(),
+  enabled: z.boolean(),
+});
+export type ModelRates = z.infer<typeof ModelRatesSchema>;
+
+export const ModelRegistrySchema = z.record(z.string(), ModelRatesSchema);
+export type ModelRegistry = z.infer<typeof ModelRegistrySchema>;
+
+// PATCH /admin/model-registry returns just the one updated entry (with its id), not the
+// full registry map — a distinct shape from ModelRegistrySchema's GET response.
+export const ModelRegistryEntrySchema = ModelRatesSchema.extend({ modelId: z.string() });
+export type ModelRegistryEntry = z.infer<typeof ModelRegistryEntrySchema>;
+
+export const PrivacySettingsSchema = z.object({
+  retentionDays: z.number(),
+  telemetry: z.boolean(),
+});
+export type PrivacySettings = z.infer<typeof PrivacySettingsSchema>;

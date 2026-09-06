@@ -12,9 +12,21 @@ interface AuthContextValue {
   profile: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  /** Re-fetches and re-parses `/me`, updating `profile` — e.g. after ProfileSection changes
+   * the display name, so the header/RoleBadge update without a full reload. */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function fetchProfile(): Promise<User | null> {
+  try {
+    const body = await apiFetch<unknown>("/me");
+    return UserSchema.parse(body);
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -29,9 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      apiFetch<unknown>("/me")
-        .then((body) => setProfile(UserSchema.parse(body)))
-        .catch(() => setProfile(null))
+      fetchProfile()
+        .then(setProfile)
         .finally(() => setLoading(false));
     });
   }, []);
@@ -42,6 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     signOut: async () => {
       await signOutUser();
+    },
+    refreshProfile: async () => {
+      setProfile(await fetchProfile());
     },
   };
 
