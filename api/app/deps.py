@@ -10,9 +10,20 @@ from firebase_admin import auth as fb_auth
 from google.cloud import firestore
 
 from app.adapters.firestore_repos import FirestoreAuditRepo, FirestoreUserRepo
+from app.adapters.gemini import GeminiProvider
 from app.config import get_settings
 from app.domain.models import User
-from app.ports.repos import AuditRepo, ProjectRepo, PromptRepo, UserRepo
+from app.ports.llm import LLMProvider
+from app.ports.repos import (
+    AuditRepo,
+    DatasetRepo,
+    ModelRegistryRepo,
+    ProjectRepo,
+    PromptRepo,
+    RunRepo,
+    UserRepo,
+    VersionRepo,
+)
 
 _firebase_app: firebase_admin.App | None = None
 _firestore_client: firestore.AsyncClient | None = None
@@ -90,6 +101,40 @@ def get_prompt_repo(client: firestore.AsyncClient = Depends(get_firestore_client
     from app.adapters.firestore_repos import FirestorePromptRepo
 
     return FirestorePromptRepo(client)
+
+
+def get_version_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> VersionRepo:
+    # Local import avoids a circular-import ordering concern between deps.py and
+    # firestore_repos.py; same pattern as get_project_repo/get_prompt_repo above.
+    from app.adapters.firestore_repos import FirestoreVersionRepo
+
+    return FirestoreVersionRepo(client)
+
+
+def get_dataset_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> DatasetRepo:
+    from app.adapters.firestore_repos import FirestoreDatasetRepo
+
+    return FirestoreDatasetRepo(client)
+
+
+def get_run_repo(client: firestore.AsyncClient = Depends(get_firestore_client)) -> RunRepo:
+    from app.adapters.firestore_repos import FirestoreRunRepo
+
+    return FirestoreRunRepo(client)
+
+
+def get_model_registry_repo(
+    client: firestore.AsyncClient = Depends(get_firestore_client),
+) -> ModelRegistryRepo:
+    from app.adapters.firestore_repos import FirestoreModelRegistryRepo
+
+    return FirestoreModelRegistryRepo(client)
+
+
+def get_llm_provider() -> LLMProvider:
+    """Real Gemini by default; tests override this via `app.dependency_overrides` to inject
+    `FakeLLMProvider` so CI never spends tokens (see tests/integration/conftest.py)."""
+    return GeminiProvider(get_settings().gemini_api_key)
 
 
 async def current_user(

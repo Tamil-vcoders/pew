@@ -1,32 +1,25 @@
 // web/app/(workspace)/p/[promptId]/page.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
-import { capabilitiesFor } from "@/shared/rbac/permissions";
-import { usePromptDoc, workspaceApi } from "@/features/workspace";
+import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
+import { useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
+import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/features/editor";
+import { SuggestionsPanel } from "@/features/suggestions";
+import { DatasetTab, useDatasetStream } from "@/features/dataset";
+import { RunTab } from "@/features/runs";
+import { Tab } from "@/shared/ui";
 import { COLORS } from "@/shared/ui/tokens";
-import type { Prompt } from "@/shared/types";
+import type { Prompt, Suggestion } from "@/shared/types";
 
-function PromptEditor({
-  prompt,
-  projectId,
-  can,
-}: {
-  prompt: Prompt;
-  projectId: string;
-  can: ReturnType<typeof capabilitiesFor>;
-}) {
-  // Local buffer for the in-progress name edit, same reasoning as ProjectTree's project
-  // name input: binding directly to the live Firestore-backed prompt.name makes every
-  // keystroke fire a PATCH and re-render with the stale value until it round-trips. Commit
-  // on blur instead, and re-sync if the name changes from elsewhere. This component only
-  // mounts once `prompt` is loaded (see PromptPage below), so the initial value is the real
-  // name, not a placeholder that gets swapped in a render later.
+type WorkTab = "dataset" | "run" | "suggestions";
+
+function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
+  // Local buffer for the in-progress name edit — binding directly to the live
+  // Firestore-backed prompt.name makes every keystroke fire a PATCH. Commit on blur instead.
   const [nameDraft, setNameDraft] = useState(prompt.name);
-  useEffect(() => {
-    setNameDraft(prompt.name);
-  }, [prompt.name]);
+  useEffect(() => setNameDraft(prompt.name), [prompt.name]);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function commitName() {
@@ -68,16 +61,93 @@ function PromptEditor({
       </div>
       {actionError && <div style={{ fontSize: 11, color: COLORS.bad, marginTop: 6 }}>{actionError}</div>}
       {can.settings && (
-        <button
-          style={{ marginTop: 14 }}
-          onClick={toggleArchived}
-        >
+        <button style={{ marginTop: 14 }} onClick={toggleArchived}>
           {prompt.archived ? "Unarchive" : "Archive"}
         </button>
       )}
-      <p style={{ marginTop: 20, color: COLORS.faint, fontSize: 12 }}>
-        Editor, static validation, and version history land in Phase 2.
-      </p>
+    </div>
+  );
+}
+
+function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
+  const { data: versions, error: versionsError } = useVersionsStream(projectId, prompt.id);
+  const { data: project } = useProjectDoc(projectId);
+  const { data: cases, error: datasetError } = useDatasetStream(projectId, prompt.id);
+  const currentVersion = versions.find((v) => v.n === prompt.latestVersion) ?? null;
+  const currentVersionText = currentVersion?.text ?? "";
+
+  const [draft, setDraft] = useState(currentVersionText);
+  const [tab, setTab] = useState<WorkTab>("dataset");
+  const [runId, setRunId] = useState<string | null>(null);
+  const lastSyncedVersion = useRef<number | null>(null);
+  useEffect(() => {
+    // Reset the draft to the new current version whenever latestVersion actually advances
+    // (a version was just created, via suggestion-apply here or a run against a dirty draft) —
+    // but never clobber in-progress typing on an unrelated re-render.
+    //
+    // Only mark a version "synced" once its real doc has actually loaded (currentVersion is
+    // non-null) — seeding lastSyncedVersion from prompt.latestVersion at mount would make this
+    // guard already "match" before Firestore's async onSnapshot ever delivers real data,
+    // permanently stranding draft at its empty initial value.
+    if (currentVersion && prompt.latestVersion !== lastSyncedVersion.current) {
+      setDraft(currentVersionText);
+      lastSyncedVersion.current = prompt.latestVersion;
+    }
+  }, [prompt.latestVersion, currentVersion, currentVersionText]);
+
+  async function applySuggestion(s: Suggestion) {
+    await editorApi.createVersion(projectId, prompt.id, {
+      text: s.newText, note: `Applied: ${s.technique}`, technique: s.technique,
+    });
+  }
+
+  const weights = project?.cfg.weights ?? { code: 1, model: 1, human: 1 };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <PromptHeader prompt={prompt} projectId={projectId} can={can} />
+      <PromptEditor
+        draft={draft}
+        currentVersionText={currentVersionText}
+        readOnly={!can.edit}
+        onChange={setDraft}
+        onRevert={() => setDraft(currentVersionText)}
+      />
+      {versionsError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{versionsError.message}</div>}
+      <VersionHistory versions={versions} currentVersionN={prompt.latestVersion} />
+
+      <div style={{ display: "flex", gap: 14, borderBottom: `0.5px solid ${COLORS.border}` }}>
+        <Tab active={tab === "dataset"} onClick={() => setTab("dataset")} count={cases.length}>
+          Dataset
+        </Tab>
+        <Tab active={tab === "run"} onClick={() => setTab("run")}>
+          Run
+        </Tab>
+        <Tab active={tab === "suggestions"} onClick={() => setTab("suggestions")}>
+          Suggestions
+        </Tab>
+      </div>
+
+      {tab === "dataset" && (
+        <>
+          {datasetError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{datasetError.message}</div>}
+          <DatasetTab projectId={projectId} promptId={prompt.id} promptName={prompt.name} draft={draft} cases={cases} can={can} />
+        </>
+      )}
+      {tab === "run" && (
+        <RunTab
+          projectId={projectId}
+          promptId={prompt.id}
+          draft={draft}
+          weights={weights}
+          can={can}
+          runId={runId}
+          onRunStarted={setRunId}
+        />
+      )}
+      {tab === "suggestions" && (
+        <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
+      )}
     </div>
   );
 }
@@ -91,10 +161,8 @@ export default function PromptPage({ params }: { params: { promptId: string } })
   if (promptError) {
     return <p style={{ color: COLORS.bad }}>{promptError.message}</p>;
   }
-
   if (!prompt) {
     return <p style={{ color: COLORS.muted }}>Loading…</p>;
   }
-
-  return <PromptEditor key={prompt.id} prompt={prompt} projectId={projectId} can={can} />;
+  return <PromptWorkspace key={prompt.id} prompt={prompt} projectId={projectId} can={can} />;
 }

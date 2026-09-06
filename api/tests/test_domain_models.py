@@ -13,10 +13,10 @@ def test_project_cfg_defaults_match_gemini_only_v1_scope() -> None:
     assert cfg.auto is False
     assert cfg.weights == {"code": 1.0, "model": 1.0, "human": 1.0}
     assert cfg.models == {
-        "execution": "gemini-2.5-pro",
-        "grading": "gemini-2.5-flash",
-        "suggestions": "gemini-2.5-flash",
-        "datasetGen": "gemini-2.5-flash",
+        "execution": "gemini-3.1-pro-preview",
+        "grading": "gemini-3.6-flash",
+        "suggestions": "gemini-3.6-flash",
+        "datasetGen": "gemini-3.6-flash",
     }
 
 
