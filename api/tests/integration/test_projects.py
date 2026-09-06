@@ -19,7 +19,7 @@ def test_administrator_can_create_and_list_projects() -> None:
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == "Support automation"
-    assert body["cfg"]["models"]["execution"] == "gemini-2.5-pro"
+    assert body["cfg"]["models"]["execution"] == "gemini-3.1-pro-preview"
 
     listed = client.get("/projects", headers=auth_headers(admin["id_token"]))
     assert listed.status_code == 200

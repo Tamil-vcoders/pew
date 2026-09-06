@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     firebase_project_id: str = "pew-ideathon"
     cors_origins: str = "http://localhost:3000"
+    gemini_api_key: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useSearchParams: vi.fn() }));
 vi.mock("../features/workspace", () => ({
   usePromptDoc: vi.fn(),
+  useProjectDoc: vi.fn(),
   workspaceApi: { updatePrompt: vi.fn() },
 }));
 vi.mock("../features/auth/useAuth", () => ({ useAuth: vi.fn() }));
@@ -23,11 +24,21 @@ vi.mock("../features/editor", () => ({
 vi.mock("../features/suggestions", () => ({
   SuggestionsPanel: (props: { draft: string }) => <div data-testid="suggestions-panel">{props.draft}</div>,
 }));
+vi.mock("../features/dataset", () => ({
+  useDatasetStream: vi.fn(),
+  DatasetTab: (props: { cases: unknown[] }) => (
+    <div data-testid="dataset-tab">{(props.cases as unknown[]).length} case(s)</div>
+  ),
+}));
+vi.mock("../features/runs", () => ({
+  RunTab: () => <div data-testid="run-tab" />,
+}));
 
 import { useSearchParams } from "next/navigation";
-import { usePromptDoc, workspaceApi } from "../features/workspace";
+import { usePromptDoc, useProjectDoc, workspaceApi } from "../features/workspace";
 import { useAuth } from "../features/auth/useAuth";
 import { useVersionsStream } from "../features/editor";
+import { useDatasetStream } from "../features/dataset";
 import PromptPage from "../app/(workspace)/p/[promptId]/page";
 import type { Version } from "../shared/types";
 
@@ -45,16 +56,22 @@ function setup(role: string | null, promptOverrides: Partial<typeof basePrompt> 
   });
   vi.mocked(usePromptDoc).mockReturnValue({ data: { ...basePrompt, ...promptOverrides }, error: null });
   vi.mocked(useVersionsStream).mockReturnValue({ data: versions, error: null });
+  vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
+  vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
   return render(<PromptPage params={{ promptId: "p1" }} />);
 }
 
 beforeEach(() => {
   vi.mocked(usePromptDoc).mockReset();
+  vi.mocked(useProjectDoc).mockReset();
+  vi.mocked(useDatasetStream).mockReset();
   vi.mocked(useAuth).mockReset();
   vi.mocked(useSearchParams).mockReset();
   vi.mocked(useVersionsStream).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockResolvedValue({} as never);
+  vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
+  vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
 });
 
 describe("PromptPage", () => {
@@ -92,9 +109,15 @@ describe("PromptPage", () => {
     expect(screen.getByTestId("version-history")).toHaveTextContent("2 version(s)");
   });
 
-  it("renders the SuggestionsPanel with the current draft", () => {
+  it("renders the SuggestionsPanel with the current draft once the Suggestions tab is opened", () => {
     setup("contributor");
+    fireEvent.click(screen.getByRole("button", { name: "Suggestions" }));
     expect(screen.getByTestId("suggestions-panel")).toHaveTextContent("Summarize the ticket.");
+  });
+
+  it("renders the Dataset tab by default with the case count from useDatasetStream", () => {
+    setup("contributor");
+    expect(screen.getByTestId("dataset-tab")).toHaveTextContent("0 case(s)");
   });
 
   it("syncs the draft to the real version text once versions finish loading async (regression)", () => {

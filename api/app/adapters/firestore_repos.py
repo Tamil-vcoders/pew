@@ -6,8 +6,19 @@ from typing import Any
 
 from google.cloud import firestore
 
-from app.domain.models import Project, ProjectCfg, Prompt, User, Version
-from app.ports.repos import AuditRepo
+from app.domain.models import (
+    Case,
+    CaseResult,
+    CaseSource,
+    ModelRates,
+    Project,
+    ProjectCfg,
+    Prompt,
+    RunStats,
+    User,
+    Version,
+)
+from app.ports.repos import DATASET_CASE_CAP, AuditRepo
 
 
 async def _snapshot(
@@ -372,3 +383,199 @@ class FirestoreVersionRepo:
             n=n, text=text, note=note, technique=technique,
             created_by=created_by, created_at=created_at,
         )
+
+    async def get(self, project_id: str, prompt_id: str, n: int) -> Version | None:
+        snap = await self._versions_collection(project_id, prompt_id).document(str(n)).get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict() or {}
+        created = data.get("createdAt")
+        return Version(
+            n=n, text=data.get("text", ""), note=data.get("note"), technique=data.get("technique"),
+            created_by=data.get("createdBy", ""),
+            created_at=created if isinstance(created, datetime) else None,
+        )
+
+
+def _case_from_snap(snap: firestore.DocumentSnapshot) -> Case:
+    data = snap.to_dict() or {}
+    return Case(
+        id=snap.id,
+        input=data.get("input", ""),
+        expected=data.get("expected", ""),
+        order=data.get("order", 0),
+        source=data.get("source", "manual"),
+    )
+
+
+class FirestoreDatasetRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _collection(self, project_id: str, prompt_id: str) -> firestore.AsyncCollectionReference:
+        collection: firestore.AsyncCollectionReference = (
+            self._client.collection("projects").document(project_id)
+            .collection("prompts").document(prompt_id).collection("dataset")
+        )
+        return collection
+
+    async def list_by_prompt(self, project_id: str, prompt_id: str) -> list[Case]:
+        return [
+            _case_from_snap(snap)
+            async for snap in self._collection(project_id, prompt_id).order_by("order").stream()
+        ]
+
+    async def create_case(
+        self, project_id: str, prompt_id: str, *, input: str, expected: str, source: CaseSource
+    ) -> Case:
+        cases = await self.list_by_prompt(project_id, prompt_id)
+        if len(cases) >= DATASET_CASE_CAP:
+            raise ValueError(f"Dataset already has the maximum of {DATASET_CASE_CAP} cases")
+        order = len(cases)
+        ref = self._collection(project_id, prompt_id).document()
+        await ref.set({"input": input, "expected": expected, "order": order, "source": source})
+        return Case(id=ref.id, input=input, expected=expected, order=order, source=source)
+
+    async def bulk_create(
+        self, project_id: str, prompt_id: str, cases: list[tuple[str, str]], *, source: CaseSource
+    ) -> list[Case]:
+        existing = await self.list_by_prompt(project_id, prompt_id)
+        if len(existing) + len(cases) > DATASET_CASE_CAP:
+            raise ValueError(f"Adding {len(cases)} case(s) would exceed the {DATASET_CASE_CAP}-case cap")
+        collection = self._collection(project_id, prompt_id)
+        batch = self._client.batch()
+        created: list[Case] = []
+        for i, (case_input, expected) in enumerate(cases):
+            ref = collection.document()
+            order = len(existing) + i
+            batch.set(ref, {"input": case_input, "expected": expected, "order": order, "source": source})
+            created.append(Case(id=ref.id, input=case_input, expected=expected, order=order, source=source))
+        await batch.commit()
+        return created
+
+    async def update_case(
+        self, project_id: str, prompt_id: str, case_id: str, *, input: str | None, expected: str | None
+    ) -> Case:
+        ref = self._collection(project_id, prompt_id).document(case_id)
+        patch: dict[str, Any] = {}
+        if input is not None:
+            patch["input"] = input
+        if expected is not None:
+            patch["expected"] = expected
+        if patch:
+            await ref.update(patch)
+        snap = await ref.get()
+        return _case_from_snap(snap)
+
+    async def delete_case(self, project_id: str, prompt_id: str, case_id: str) -> None:
+        await self._collection(project_id, prompt_id).document(case_id).delete()
+
+
+def _case_result_to_dict(result: CaseResult) -> dict[str, Any]:
+    return {
+        "index": result.index,
+        "caseId": result.case_id,
+        "output": result.output,
+        "codeScore": result.code_score,
+        "modelScore": result.model_score,
+        "humanScore": result.human_score,
+        "weakness": result.weakness,
+        "reasoning": result.reasoning,
+        "tokensIn": result.tokens_in,
+        "tokensOut": result.tokens_out,
+        "status": result.status,
+        "error": result.error,
+    }
+
+
+class FirestoreRunRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _prompt_ref(self, project_id: str, prompt_id: str) -> firestore.AsyncDocumentReference:
+        ref: firestore.AsyncDocumentReference = (
+            self._client.collection("projects").document(project_id)
+            .collection("prompts").document(prompt_id)
+        )
+        return ref
+
+    def _runs_collection(self, project_id: str, prompt_id: str) -> firestore.AsyncCollectionReference:
+        collection: firestore.AsyncCollectionReference = (
+            self._prompt_ref(project_id, prompt_id).collection("runs")
+        )
+        return collection
+
+    async def create_run(
+        self, project_id: str, prompt_id: str, *, version_n: int, started_by: str
+    ) -> str:
+        ref = self._runs_collection(project_id, prompt_id).document()
+        await ref.set({
+            "versionN": version_n,
+            "status": "running",
+            "composite": None,
+            "codeAvg": None,
+            "modelAvg": None,
+            "costEstimate": None,
+            "costActual": None,
+            "startedBy": started_by,
+            "startedAt": firestore.SERVER_TIMESTAMP,
+        })
+        return str(ref.id)
+
+    async def write_case(self, project_id: str, prompt_id: str, run_id: str, result: CaseResult) -> None:
+        run_ref = self._runs_collection(project_id, prompt_id).document(run_id)
+        await run_ref.collection("cases").document(result.case_id).set(_case_result_to_dict(result))
+
+    async def finalize(
+        self, project_id: str, prompt_id: str, run_id: str, *, stats: RunStats, cost_actual: float
+    ) -> None:
+        run_ref = self._runs_collection(project_id, prompt_id).document(run_id)
+        prompt_ref = self._prompt_ref(project_id, prompt_id)
+
+        @firestore.async_transactional
+        async def _run(transaction: firestore.AsyncTransaction) -> None:
+            prompt_snap = await _snapshot(transaction, prompt_ref)
+            transaction.update(
+                run_ref,
+                {
+                    "status": "complete",
+                    "composite": stats.composite,
+                    "codeAvg": stats.code_avg,
+                    "modelAvg": stats.model_avg,
+                    "costActual": cost_actual,
+                },
+            )
+            if stats.composite is not None:
+                current_best = (prompt_snap.to_dict() or {}).get("bestScore")
+                if current_best is None or stats.composite > current_best:
+                    transaction.update(prompt_ref, {"bestScore": stats.composite})
+
+        transaction = self._client.transaction()
+        await _run(transaction)
+
+    async def set_human_grade(
+        self, project_id: str, prompt_id: str, run_id: str, case_id: str, score: float | None
+    ) -> None:
+        run_ref = self._runs_collection(project_id, prompt_id).document(run_id)
+        await run_ref.collection("cases").document(case_id).update({"humanScore": score})
+
+
+def _model_rates_from_snap(snap: firestore.DocumentSnapshot) -> ModelRates:
+    data = snap.to_dict() or {}
+    return ModelRates(
+        label=data.get("label", snap.id),
+        rate_in_per_1m=data.get("ratesInPer1M", 0.0),
+        rate_out_per_1m=data.get("ratesOutPer1M", 0.0),
+        enabled=data.get("enabled", True),
+    )
+
+
+class FirestoreModelRegistryRepo:
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    async def get_all(self) -> dict[str, ModelRates]:
+        return {
+            snap.id: _model_rates_from_snap(snap)
+            async for snap in self._client.collection("modelRegistry").stream()
+        }
