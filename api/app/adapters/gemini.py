@@ -16,7 +16,7 @@ from google import genai
 from google.genai import errors, types
 
 from app.domain.models import GraderVerdict, SuggestionDraft
-from app.ports.llm import LLMCallError
+from app.ports.llm import LLMCallError, LLMQuotaExceededError
 
 _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5
@@ -68,6 +68,11 @@ async def _with_retries[T](fn: Callable[[], Awaitable[T]]) -> T:
             if attempt < _MAX_ATTEMPTS - 1:
                 delay = _BACKOFF_BASE_SECONDS * (2**attempt) + random.uniform(0, 0.25)
                 await asyncio.sleep(delay)
+    if isinstance(last_exc, errors.APIError) and last_exc.code == 429:
+        raise LLMQuotaExceededError(
+            "Gemini API quota exhausted after 3 attempts — wait a few minutes (or check "
+            "your AI Studio quota) before retrying."
+        ) from last_exc
     raise LLMCallError(f"Gemini call failed after {_MAX_ATTEMPTS} attempts: {last_exc}") from last_exc
 
 

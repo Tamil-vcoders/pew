@@ -32,6 +32,7 @@ from app.domain.models import (
 )
 from app.domain.rendering import render
 from app.domain.suggestions import build_suggestions
+from app.observability import log_event
 from app.ports.llm import LLMProvider
 from app.ports.repos import (
     CycleRepo,
@@ -99,6 +100,13 @@ def _config_snapshot(project: Project) -> CycleConfigSnapshot:
     )
 
 
+def _log_ended(cycle: Cycle) -> None:
+    log_event(
+        "cycle_ended", cycle_id=cycle.id, project_id=cycle.project_id, prompt_id=cycle.prompt_id,
+        reason=cycle.end_reason, iteration=cycle.iteration, spent=cycle.spent,
+    )
+
+
 async def start_cycle(*, project: Project, prompt: Prompt, user_uid: str, user_name: str, deps: CycleDeps) -> Cycle:
     config = _config_snapshot(project)
     fresh = cyc.start(cycle_id="", prompt_id=prompt.id, project_id=project.id, config=config, started_by=user_uid)
@@ -109,6 +117,7 @@ async def start_cycle(*, project: Project, prompt: Prompt, user_uid: str, user_n
          f'max {config.max_iter} iterations, budget ${config.budget:.2f}, '
          f'{"auto" if config.auto else "attended"} mode.')],
     )
+    log_event("cycle_started", cycle_id=created.id, project_id=project.id, prompt_id=prompt.id, uid=user_uid)
     if config.auto:
         inline_tasks.schedule(deps.background_tasks, _auto_approve_after_delay, cycle_id=created.id, deps=deps)
     return created
@@ -150,6 +159,7 @@ async def confirm_iteration(cycle_id: str, *, text: str, actor_uid: str, deps: C
              f"(${cycle.config.budget - cycle.spent:.4f}) — not started."),
              f"Cycle ended — {reason}. ${ended.spent:.4f} spent, all iterations retained."],
         )
+        _log_ended(ended)
         return ended
 
     version_n = await _create_or_reuse_version(deps, cycle, prompt, text, actor_uid)
@@ -251,9 +261,14 @@ async def continue_cycle(cycle_id: str, *, deps: CycleDeps) -> Cycle:
         if cycle.current_version_n is None or cycle.current_run_id is None:
             raise ValueError("No scored run to continue from")
         run = await deps.runs.get(cycle.project_id, cycle.prompt_id, cycle.current_run_id)
-        if run is None or run.composite is None:
+        if run is None or run.status != "complete":
             raise ValueError("Run is not finalized yet")
-        return await _advance_after_score(cycle, run.composite, deps=deps)
+        # A run where every case errored (quota exhaustion, persistent 5xx, ...) finalizes
+        # with composite=None (nothing to average) but status="complete" — treat it as the
+        # worst possible score rather than blocking the cycle forever, matching auto mode's
+        # _run_iteration_and_advance (Phase 4), which already does this.
+        composite = run.composite if run.composite is not None else 0.0
+        return await _advance_after_score(cycle, composite, deps=deps)
 
     if cycle.stage == "checking" and cycle.warned_flat:
         if cycle.current_version_n is None:
@@ -273,10 +288,12 @@ async def _advance_after_score(cycle: Cycle, composite: float, *, deps: CycleDep
     if decision.startswith("end:"):
         reason = cast(CycleEndReason, decision.removeprefix("end:"))
         ended = cyc.end(scored, reason)
-        return await _save_and_log(
+        ended = await _save_and_log(
             deps, ended,
             [msg, f"Cycle ended — {reason}. ${ended.spent:.4f} spent, all iterations retained."],
         )
+        _log_ended(ended)
+        return ended
 
     if decision == "warn:flat":
         return await _save_and_log(
@@ -306,11 +323,13 @@ async def _propose_suggestions_step(cycle: Cycle, *, text: str, deps: CycleDeps)
     proposed, decision = cyc.propose_suggestions(cycle, candidates=drafted, cost=cost)
     if decision == "end:no-suggestions":
         ended = cyc.end(proposed, "no-suggestions")
-        return await _save_and_log(
+        ended = await _save_and_log(
             deps, ended,
             ["Every catalogue rule passes — no suggestion to generate.",
              f"Cycle ended — no-suggestions. ${ended.spent:.4f} spent, all iterations retained."],
         )
+        _log_ended(ended)
+        return ended
 
     proposed = await _save_and_log(deps, proposed, [f"{len(picked)} suggestion(s) generated (${cost:.4f})."])
     if proposed.config.auto:
@@ -349,6 +368,7 @@ async def stop_cycle_action(cycle_id: str, *, deps: CycleDeps) -> Cycle:
         stopped = await _save_and_log(
             deps, stopped, [f"Cycle ended — user-stopped. ${stopped.spent:.4f} spent, all iterations retained."]
         )
+        _log_ended(stopped)
     return stopped
 
 

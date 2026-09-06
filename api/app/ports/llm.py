@@ -11,6 +11,13 @@ class LLMCallError(Exception):
     `status: "error"` marker — never silently score the case zero (devspec §6.2)."""
 
 
+class LLMQuotaExceededError(LLMCallError):
+    """Raised specifically when every retry failed because of a 429/RESOURCE_EXHAUSTED
+    response — lets callers distinguish "provider is out of quota" from a generic call
+    failure and surface a clearer, human-readable message instead of the raw provider
+    error text."""
+
+
 class LLMProvider(Protocol):
     async def execute(self, prompt: str, model: str) -> tuple[str, int, int]:
         """Run the rendered prompt. Returns (output_text, tokens_in, tokens_out)."""

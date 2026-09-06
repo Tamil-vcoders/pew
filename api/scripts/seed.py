@@ -18,6 +18,10 @@ TRIAGE_PROMPT = (
     "and use your best judgement.\n\nTicket: {{ticket_text}}\nUrgency levels: "
     "{{urgency_levels}}\n\nGive me an answer."
 )
+# This prompt is the demo-script's "converges within 2–3 iterations" beat. Convergence
+# against **real** Gemini is verified live in Task 12, not asserted by an automated
+# (FakeLLMProvider-backed) test — FakeLLMProvider's scores are a deterministic hash, not a
+# real quality signal, so no unit/integration test can meaningfully assert "converges" against it.
 REPLY_PROMPT = (
     "Write a reply to the customer. Try to sound nice.\n\nTicket: {{ticket_text}}\n"
     "Tone guide: {{tone}}\n\nAnswer:"
@@ -58,8 +62,21 @@ TRIAGE_DATASET = [
     ("The app crashes every time I try to upload a photo larger than 5MB.", "medium"),
 ]
 
+
+# `expected` is a single literal word/phrase, matching TRIAGE_DATASET's convention — the code
+# grader (domain/scoring.py::code_grade) is an exact case-insensitive substring check against
+# the raw output, not a semantic judge. A prose description a reply would never literally
+# contain (e.g. "apology + replacement/refund offer") makes the code grader score 0 on every
+# case regardless of reply quality, capping the composite at model_avg/2 — well below any
+# real target. Found live during Phase 6 Task 12 verification against real Gemini.
+REPLY_DATASET = [
+    ("Ticket: my order arrived damaged. Tone: apologetic and solution-focused.", "sorry"),
+    ("Ticket: how do I cancel my subscription? Tone: neutral, direct.", "cancel"),
+    ("Ticket: the app is great but I wish it had dark mode. Tone: appreciative.", "thank"),
+]
+
 DEFAULT_CFG: dict[str, Any] = {
-    "target": 8, "maxIter": 4, "budget": 0.6, "nSug": 2, "auto": False,
+    "target": 8, "maxIter": 4, "budget": 0.5, "nSug": 2, "auto": False,
     "weights": {"code": 1, "model": 1, "human": 1},
     "models": {
         "execution": "gemini-3.1-pro-preview", "grading": "gemini-3.6-flash",
@@ -149,12 +166,12 @@ async def run(*, force: bool = False) -> None:
 
     support_id = await _upsert_project(fs, "Support automation", DEFAULT_CFG)
     marketing_cfg: dict[str, Any] = {
-        **DEFAULT_CFG, "target": 7.5, "maxIter": 3, "budget": 1.0,
+        **DEFAULT_CFG, "target": 7.5, "maxIter": 3, "budget": 0.5,
     }
     marketing_id = await _upsert_project(fs, "Marketing copy", marketing_cfg)
 
     await _upsert_prompt(fs, support_id, "Ticket triage", ["triage", "prod"], TRIAGE_PROMPT, TRIAGE_DATASET)
-    await _upsert_prompt(fs, support_id, "Reply drafter", ["replies", "experiment"], REPLY_PROMPT)
+    await _upsert_prompt(fs, support_id, "Reply drafter", ["replies", "experiment"], REPLY_PROMPT, REPLY_DATASET)
     await _upsert_prompt(fs, marketing_id, "Product blurb writer", ["marketing", "experiment"], BLURB_PROMPT)
 
     await _upsert_demo_accounts(fs)

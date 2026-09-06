@@ -3,10 +3,11 @@ The genai client is swapped for an in-memory fake that returns canned response t
 from __future__ import annotations
 
 import pytest
+from google.genai import errors
 
 from app.adapters import gemini as gemini_module
 from app.adapters.gemini import GeminiProvider
-from app.ports.llm import LLMCallError
+from app.ports.llm import LLMCallError, LLMQuotaExceededError
 
 
 class _FakeResponse:
@@ -37,6 +38,25 @@ class _FakeClient:
 def _provider_with_responses(texts: list[str | None]) -> GeminiProvider:
     provider = GeminiProvider(api_key="unused")
     provider._client = _FakeClient(texts)  # type: ignore[assignment]
+    return provider
+
+
+class _FakeModelsRaising:
+    def __init__(self, exc: Exception) -> None:
+        self.calls = 0
+        self._exc = exc
+
+    async def generate_content(self, *, model: str, contents: str, config: object = None) -> _FakeResponse:
+        self.calls += 1
+        raise self._exc
+
+
+def _provider_raising(exc: Exception) -> GeminiProvider:
+    provider = GeminiProvider(api_key="unused")
+    fake_aio = _FakeAio([])
+    fake_aio.models = _FakeModelsRaising(exc)  # type: ignore[assignment]
+    provider._client = _FakeClient([])  # type: ignore[assignment]
+    provider._client.aio = fake_aio  # type: ignore[assignment]
     return provider
 
 
@@ -82,3 +102,17 @@ async def test_grade_raises_when_every_attempt_is_missing_a_required_field():
     provider = _provider_with_responses(['{"score": 9}'] * 3)
     with pytest.raises(LLMCallError):
         await provider.grade("prompt", "output", "expected", "gemini-2.5-flash")
+
+
+async def test_grade_raises_llm_quota_exceeded_after_three_429s():
+    provider = _provider_raising(errors.ClientError(429, {"message": "RESOURCE_EXHAUSTED", "status": "RESOURCE_EXHAUSTED"}, None))
+    with pytest.raises(LLMQuotaExceededError):
+        await provider.grade("prompt", "output", "expected", "gemini-2.5-flash")
+    assert provider._client.aio.models.calls == 3  # type: ignore[attr-defined]
+
+
+async def test_grade_raises_plain_llm_call_error_for_a_non_quota_server_error():
+    provider = _provider_raising(errors.ServerError(500, {"message": "internal", "status": "INTERNAL"}, None))
+    with pytest.raises(LLMCallError) as exc_info:
+        await provider.grade("prompt", "output", "expected", "gemini-2.5-flash")
+    assert not isinstance(exc_info.value, LLMQuotaExceededError)

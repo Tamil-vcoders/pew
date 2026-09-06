@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.adapters.fake_llm import FakeLLMProvider
 from app.adapters.firestore_repos import FirestoreCycleRepo
 from app.deps import get_firestore_client
 from app.main import app
+from tests.fakes import FAIL_MARKER, FaultyFakeLLMProvider
 from tests.integration.conftest import auth_headers, create_emulator_user, seed_model_registry
 
 client = TestClient(app)
@@ -403,3 +405,38 @@ async def test_auto_mode_cycle_advances_unattended_to_an_end_reason():
     doc = snap.to_dict() or {}
     assert doc["status"] == "ended"
     assert doc["endReason"] == "target-met"
+
+
+# ---------- All-cases-errored iteration (Phase 6 hardening) ----------
+
+
+async def test_continuing_from_grading_after_every_case_errors_treats_composite_as_zero():
+    from app.deps import get_llm_provider
+
+    app.dependency_overrides[get_llm_provider] = lambda: FaultyFakeLLMProvider()
+    try:
+        await seed_model_registry()
+        admin = _bootstrap("asha@acme.dev")
+        project_id, prompt_id = _make_project_and_prompt(admin["id_token"])
+        _add_cases(project_id, prompt_id, admin["id_token"], n=1)
+        token = admin["id_token"]
+        headers = auth_headers(token)
+        _patch_cfg(project_id, token, target=0.4, maxIter=1, budget=10.0)
+
+        started = _start(project_id, prompt_id, token)
+        cycle_id = started["body"]["id"]
+        client.post(f"/cycles/{cycle_id}/approve-dataset", headers=headers)
+        client.post(
+            f"/cycles/{cycle_id}/confirm-iteration",
+            json={"text": f"Summarize: {{{{ticket_text}}}} {FAIL_MARKER}"},
+            headers=headers,
+        )
+        assert (await _read_cycle_doc(cycle_id))["stage"] == "grading"
+
+        ended = client.post(f"/cycles/{cycle_id}/continue", headers=headers)
+        assert ended.status_code == 200, ended.text
+        body = ended.json()
+        assert body["status"] == "ended"
+        assert body["endReason"] == "iteration-cap"  # composite forced to 0.0 never meets target=0.4
+    finally:
+        app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider()

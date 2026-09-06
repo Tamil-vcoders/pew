@@ -41,11 +41,12 @@ export function PromptEditor({
           readOnly={readOnly}
           onChange={(e) => onChange(e.target.value)}
           spellCheck={false}
+          aria-label="Prompt text"
           style={{
             width: "100%", minHeight: 190, resize: "vertical",
             background: "#0F1116", color: readOnly ? COLORS.muted : COLORS.text,
             border: `0.5px solid ${isDirty ? COLORS.accent + "80" : COLORS.border}`,
-            borderRadius: 8, padding: 12, fontSize: 12.5, lineHeight: 1.6, outline: "none",
+            borderRadius: 8, padding: 12, fontSize: 12.5, lineHeight: 1.6,
             fontFamily: "ui-monospace, monospace",
           }}
         />

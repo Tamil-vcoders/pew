@@ -14,7 +14,7 @@ import type { Case, Cycle, Estimate, ModelRegistry, Project, Version } from "@/s
 
 const inputStyle = {
   background: "#0F1116", color: COLORS.text, border: `0.5px solid ${COLORS.border}`,
-  borderRadius: 6, padding: "6px 8px", fontSize: 12.5, outline: "none", width: "100%",
+  borderRadius: 6, padding: "6px 8px", fontSize: 12.5, width: "100%",
 } as const;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
