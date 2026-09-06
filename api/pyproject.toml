@@ -42,6 +42,13 @@ target-version = "py312"
 # used throughout app/deps.py and app/routes/*; FastAPI's own docs instruct users to disable
 # this specific bugbear check for that reason.
 ignore = ["B008"]
+extend-select = ["TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"logging".msg = "Use app.observability.log_event (the whitelisted-keys helper) instead of the stdlib logging module directly — privacy rule, see CLAUDE.md / devspec §14."
+
+[tool.ruff.lint.per-file-ignores]
+"app/observability.py" = ["TID251"]
 
 [tool.mypy]
 python_version = "3.12"
