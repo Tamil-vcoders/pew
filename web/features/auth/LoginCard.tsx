@@ -1,10 +1,11 @@
 // web/features/auth/LoginCard.tsx
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { COLORS } from "@/shared/ui/tokens";
 import { Btn } from "@/shared/ui/Btn";
 import { resetPassword, signIn, signInWithGoogle, signUp } from "./authService";
+import { useAuth } from "./useAuth";
 
 type Mode = "signin" | "signup";
 
@@ -32,6 +33,7 @@ const DEMO_ACCOUNTS = [
 
 export function LoginCard() {
   const router = useRouter();
+  const { profile } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -39,6 +41,20 @@ export function LoginCard() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Redirect once the auth context actually observes a signed-in profile, rather than
+  // immediately after the raw Firebase SDK call resolves. signIn()/signUp()/signInWithGoogle()
+  // resolving does NOT mean useAuth()'s onAuthStateChanged listener has fired yet -- that's a
+  // separate, slightly-later async notification. Navigating on the raw promise raced against
+  // that listener: AuthGuard on "/" reads the same `profile` from this same context, and if it
+  // hadn't updated yet by the time the navigation landed, AuthGuard saw stale
+  // signed-out state and bounced straight back to /login. Gating the redirect on `profile`
+  // itself ties both places to the same state, so they can't disagree.
+  useEffect(() => {
+    if (profile) {
+      router.push("/");
+    }
+  }, [profile, router]);
 
   async function submit() {
     setError(null);
@@ -57,7 +73,6 @@ export function LoginCard() {
       } else {
         await signIn(email, password);
       }
-      router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     }
@@ -67,7 +82,6 @@ export function LoginCard() {
     setError(null);
     try {
       await signInWithGoogle();
-      router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     }
