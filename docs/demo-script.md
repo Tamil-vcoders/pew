@@ -147,6 +147,18 @@ Seeded accounts (`api/scripts/seed.py`, `DEMO_ACCOUNTS` / `DEMO_PASSWORD`), all 
      `0.5` — expected to converge within 2-3 iterations (this expectation is stated in
      `seed.py`'s comment above `REPLY_PROMPT`; it is **not** asserted by any automated test,
      since `FakeLLMProvider` can't stand in for real quality — it's verified live in Task 12).
+     **Status as of the Task 12 live pass:** a real bug was found and fixed — `REPLY_DATASET`'s
+     `expected` values were prose descriptions ("apology + replacement/refund offer") that no
+     literal reply would ever contain, so the code grader scored 0 on every case regardless of
+     reply quality, capping the composite at `model_avg / 2` (≤ 5.0) — target `8` was
+     mathematically unreachable. Fixed to single literal words a good reply plausibly contains
+     ("sorry" / "cancel" / "thank" — matching `TRIAGE_DATASET`'s convention). **Actual
+     convergence against real Gemini remains unverified**: the configured AI Studio key had no
+     usable quota during this pass (every execution/grading call failed with
+     `LLMQuotaExceededError` after 3 retries — itself a clean live confirmation that the
+     Phase 6 429-handling hardening works correctly: human-readable per-case error markers, no
+     stack trace, cycle correctly falls back to composite `0.0` instead of deadlocking, cycle
+     stops cleanly on `Stop`). Re-run this beat once the key has quota, before recording.
 3. Click **`Start cycle on "Ticket triage"`** (or `"Reply drafter"` for the real take — button
    text is `Start cycle on "<promptName>"`).
 4. Click the **"Dataset"** tab. A banner titled **"Paused: review the dataset"** appears.

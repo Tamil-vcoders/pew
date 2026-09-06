@@ -62,10 +62,17 @@ TRIAGE_DATASET = [
     ("The app crashes every time I try to upload a photo larger than 5MB.", "medium"),
 ]
 
+
+# `expected` is a single literal word/phrase, matching TRIAGE_DATASET's convention — the code
+# grader (domain/scoring.py::code_grade) is an exact case-insensitive substring check against
+# the raw output, not a semantic judge. A prose description a reply would never literally
+# contain (e.g. "apology + replacement/refund offer") makes the code grader score 0 on every
+# case regardless of reply quality, capping the composite at model_avg/2 — well below any
+# real target. Found live during Phase 6 Task 12 verification against real Gemini.
 REPLY_DATASET = [
-    ("Ticket: my order arrived damaged. Tone: apologetic and solution-focused.", "apology + replacement/refund offer"),
-    ("Ticket: how do I cancel my subscription? Tone: neutral, direct.", "clear cancellation steps"),
-    ("Ticket: the app is great but I wish it had dark mode. Tone: appreciative.", "thanks + roadmap acknowledgement, no overpromising"),
+    ("Ticket: my order arrived damaged. Tone: apologetic and solution-focused.", "sorry"),
+    ("Ticket: how do I cancel my subscription? Tone: neutral, direct.", "cancel"),
+    ("Ticket: the app is great but I wish it had dark mode. Tone: appreciative.", "thank"),
 ]
 
 DEFAULT_CFG: dict[str, Any] = {
