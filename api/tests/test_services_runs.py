@@ -69,6 +69,8 @@ async def test_execute_run_short_circuits_remaining_cases_once_quota_is_exhauste
         rates=RATES, llm=FaultyFakeLLMProvider(), runs=runs,
     )
 
-    skipped = [r for r in runs.written if r.status == "error" and "quota" in (r.error or "").lower()]
-    assert len(skipped) >= 2  # case 0 itself, plus at least one later case that never called the LLM
-    assert stats.error_count >= 2
+    done = [r for r in runs.written if r.status == "done"]
+    skipped = [r for r in runs.written if r.status == "error" and "skipped" in (r.error or "").lower()]
+    assert len(done) >= 2, "cases racing concurrently with the quota failure should still complete normally"
+    assert len(skipped) >= 1, "later cases should short-circuit instead of each burning 3 retries"
+    assert stats.error_count >= 2  # case 0's own quota error, plus at least one short-circuited skip

@@ -20,6 +20,11 @@ class FaultyFakeLLMProvider(FakeLLMProvider):
     every other call (including grade/suggest/generate_cases/count_tokens) is unchanged."""
 
     async def execute(self, prompt: str, model: str) -> tuple[str, int, int]:
+        # Real suspension point: FakeLLMProvider.execute() (the non-marker delegate below)
+        # has no `await` of its own, so without this, asyncio.gather would let one coroutine
+        # run to full completion before the next is even scheduled — no genuine concurrency
+        # to test. This sleep makes cases racing for the semaphore actually interleave.
+        await asyncio.sleep(0.005)
         if FAIL_MARKER in prompt:
             raise LLMCallError("simulated: all 3 retries exhausted")
         if QUOTA_MARKER in prompt:
