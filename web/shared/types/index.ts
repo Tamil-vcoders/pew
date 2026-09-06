@@ -104,6 +104,49 @@ export const RunSchema = z.object({
 });
 export type Run = z.infer<typeof RunSchema>;
 
+export const CycleScoreSchema = z.object({ n: z.number(), score: z.number() });
+export type CycleScore = z.infer<typeof CycleScoreSchema>;
+
+export const CyclePendingSchema = z.object({
+  candidates: z.array(SuggestionSchema),
+  selected: z.number(),
+});
+export type CyclePending = z.infer<typeof CyclePendingSchema>;
+
+export const CycleLogEntrySchema = z.object({ ts: z.string(), message: z.string() });
+export type CycleLogEntry = z.infer<typeof CycleLogEntrySchema>;
+
+export const CycleEndReasonSchema = z.enum([
+  "target-met",
+  "iteration-cap",
+  "budget-cap",
+  "user-stopped",
+  "no-suggestions",
+  "not-converging",
+]);
+export type CycleEndReason = z.infer<typeof CycleEndReasonSchema>;
+
+export const CycleSchema = z.object({
+  id: z.string(),
+  promptId: z.string(),
+  projectId: z.string(),
+  status: z.enum(["active", "ended"]),
+  stage: z.enum(["dataset", "preview", "running", "grading", "checking", "suggesting", "ended"]),
+  iteration: z.number(),
+  spent: z.number(),
+  scores: z.array(CycleScoreSchema),
+  endReason: CycleEndReasonSchema.nullable(),
+  bestN: z.number().nullable(),
+  warnedFlat: z.boolean(),
+  currentVersionN: z.number().nullable(),
+  currentRunId: z.string().nullable(),
+  pending: CyclePendingSchema.nullable(),
+  configSnapshot: ProjectCfgSchema,
+  log: z.array(CycleLogEntrySchema),
+  startedBy: z.string(),
+});
+export type Cycle = z.infer<typeof CycleSchema>;
+
 export const EstimateRowSchema = z.object({
   stage: z.string(),
   model: z.string(),

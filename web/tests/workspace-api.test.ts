@@ -37,4 +37,22 @@ describe("workspaceApi", () => {
       body: JSON.stringify({ archived: true }),
     });
   });
+
+  it("updateCfg patches every cfg field (no name) to /projects/{id}", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ id: "j1" });
+    const cfg = {
+      target: 8, maxIter: 4, budget: 0.6, nSug: 2, auto: false,
+      weights: { code: 1, model: 1, human: 1 },
+      models: { execution: "m1", grading: "m2", suggestions: "m2", datasetGen: "m2" },
+    };
+    await workspaceApi.updateCfg("j1", cfg);
+    expect(apiFetch).toHaveBeenCalledWith("/projects/j1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        target: 8, maxIter: 4, budget: 0.6, nSug: 2, auto: false,
+        weights: { code: 1, model: 1, human: 1 },
+        models: { execution: "m1", grading: "m2", suggestions: "m2", datasetGen: "m2" },
+      }),
+    });
+  });
 });

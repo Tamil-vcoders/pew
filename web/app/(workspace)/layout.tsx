@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { useAuth } from "@/features/auth/useAuth";
+import { CycleStatusChip } from "@/features/cycle";
 import { ProjectTree } from "@/features/workspace";
 import { Btn } from "@/shared/ui/Btn";
 import { RoleBadge } from "@/shared/ui/RoleBadge";
@@ -34,6 +35,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           <span style={{ fontSize: 15, fontWeight: 600 }}>Prompt Evaluation Workbench</span>
           {profile && (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <CycleStatusChip />
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11.5, fontWeight: 500 }}>{profile.name}</div>
                 <RoleBadge role={profile.role} />

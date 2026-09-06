@@ -10,6 +10,8 @@ from fastapi import BackgroundTasks
 
 
 def schedule[**P](
-    background_tasks: BackgroundTasks, fn: Callable[P, Awaitable[None]], *args: P.args, **kwargs: P.kwargs
+    background_tasks: BackgroundTasks, fn: Callable[P, Awaitable[object]], *args: P.args, **kwargs: P.kwargs
 ) -> None:
+    """Fire-and-forget: whatever `fn` returns is discarded (BackgroundTasks has no result
+    channel back to the request), so `fn`'s return type is unconstrained beyond Awaitable."""
     background_tasks.add_task(fn, *args, **kwargs)

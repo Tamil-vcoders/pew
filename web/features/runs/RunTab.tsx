@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Btn, COLORS, ScoreBadge } from "@/shared/ui";
 import { requiresRoleCaption, type Capabilities } from "@/shared/rbac/permissions";
-import type { CaseResult, Estimate } from "@/shared/types";
+import type { CaseResult, Cycle, Estimate } from "@/shared/types";
 import { EstimateTable } from "./EstimateTable";
 import { runsApi } from "./runsApi";
 import { useRunStream } from "./useRunStream";
@@ -128,6 +128,7 @@ export function RunTab({
   can,
   runId,
   onRunStarted,
+  cycle,
 }: {
   projectId: string;
   promptId: string;
@@ -136,16 +137,28 @@ export function RunTab({
   can: Capabilities;
   runId: string | null;
   onRunStarted: (runId: string) => void;
+  /** The globally active cycle, if any (devspec's v1 one-active-cycle-at-a-time
+   * simplification) — not necessarily for this prompt. When it IS for this prompt, the
+   * cycle's own run drives the streaming view instead of this tab's self-serve one. */
+  cycle?: Cycle | null;
 }) {
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { run, cases } = useRunStream(projectId, promptId, runId);
+  const cycleIsHere = cycle?.promptId === promptId;
+  const effectiveRunId = cycleIsHere ? cycle?.currentRunId ?? null : runId;
+  const { run, cases } = useRunStream(projectId, promptId, effectiveRunId);
 
   if (!can.edit) {
     return <div style={{ fontSize: 11.5, color: COLORS.faint }}>{requiresRoleCaption("contributor")}</div>;
   }
+
+  // Manual "Run once" is refused by the API (409) while ANY cycle is active anywhere, not
+  // just one on this prompt — devspec §1.2's one-active-cycle-globally simplification. The
+  // cycle's own preview/confirm banner (rendered by the page, above this tab) replaces this
+  // tab's self-serve preview/confirm flow whenever a cycle is running.
+  const anyCycleActive = !!cycle && cycle.status === "active";
 
   async function previewRun() {
     try {
@@ -181,7 +194,7 @@ export function RunTab({
       {run.error && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{run.error.message}</div>}
       {cases.error && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{cases.error.message}</div>}
 
-      {previewing && estimate && (
+      {previewing && estimate && !anyCycleActive && (
         <div style={{ border: `0.5px solid ${COLORS.accent}55`, borderRadius: 10, padding: 13, background: COLORS.accentDim }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Single run — projected cost</div>
           <EstimateTable estimate={estimate} />
@@ -196,14 +209,18 @@ export function RunTab({
         </div>
       )}
 
-      {!previewing && !runId && (
+      {!previewing && !effectiveRunId && !anyCycleActive && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
           <div style={{ fontSize: 12.5, color: COLORS.muted }}>No run yet for this draft.</div>
           <Btn onClick={previewRun}>Run once</Btn>
         </div>
       )}
 
-      {runId && (
+      {!effectiveRunId && anyCycleActive && !cycleIsHere && (
+        <div style={{ fontSize: 12.5, color: COLORS.muted }}>No run yet for this draft.</div>
+      )}
+
+      {effectiveRunId && (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             <div>
@@ -253,13 +270,13 @@ export function RunTab({
                 key={c.caseId}
                 projectId={projectId}
                 promptId={promptId}
-                runId={runId}
+                runId={effectiveRunId}
                 caseResult={c}
                 weights={weights}
               />
             ))}
           </div>
-          {!running && (
+          {!running && !anyCycleActive && (
             <div>
               <Btn tone="ghost" small onClick={previewRun}>
                 Run again

@@ -1,6 +1,7 @@
 // web/app/(workspace)/p/[promptId]/page.tsx
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
@@ -9,11 +10,13 @@ import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/fe
 import { SuggestionsPanel } from "@/features/suggestions";
 import { DatasetTab, useDatasetStream } from "@/features/dataset";
 import { RunTab } from "@/features/runs";
+import { SetupTab } from "@/features/setup";
+import { CycleBanner, cycleApi, useCycle, useCycleElsewhereLabel } from "@/features/cycle";
 import { Tab } from "@/shared/ui";
 import { COLORS } from "@/shared/ui/tokens";
 import type { Prompt, Suggestion } from "@/shared/types";
 
-type WorkTab = "dataset" | "run" | "suggestions";
+type WorkTab = "setup" | "dataset" | "run" | "suggestions";
 
 function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
   // Local buffer for the in-progress name edit — binding directly to the live
@@ -73,6 +76,7 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
   const { data: versions, error: versionsError } = useVersionsStream(projectId, prompt.id);
   const { data: project } = useProjectDoc(projectId);
   const { data: cases, error: datasetError } = useDatasetStream(projectId, prompt.id);
+  const { data: cycle, error: cycleError } = useCycle();
   const currentVersion = versions.find((v) => v.n === prompt.latestVersion) ?? null;
   const currentVersionText = currentVersion?.text ?? "";
 
@@ -102,6 +106,13 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
   }
 
   const weights = project?.cfg.weights ?? { code: 1, model: 1, human: 1 };
+  const cycleIsHere = cycle?.promptId === prompt.id;
+  const cycleIsActive = cycle?.status === "active";
+  const elsewhereLabel = useCycleElsewhereLabel(cycleIsActive && !cycleIsHere ? cycle : null);
+
+  async function stopCycle() {
+    if (cycle) await cycleApi.stop(cycle.id);
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -114,39 +125,97 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
         onRevert={() => setDraft(currentVersionText)}
       />
       {versionsError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{versionsError.message}</div>}
+      {cycleError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{cycleError.message}</div>}
       <VersionHistory versions={versions} currentVersionN={prompt.latestVersion} />
 
       <div style={{ display: "flex", gap: 14, borderBottom: `0.5px solid ${COLORS.border}` }}>
-        <Tab active={tab === "dataset"} onClick={() => setTab("dataset")} count={cases.length}>
+        <Tab active={tab === "setup"} onClick={() => setTab("setup")} dot={cycleIsHere && cycle?.status === "ended"}>
+          Setup
+        </Tab>
+        <Tab active={tab === "dataset"} onClick={() => setTab("dataset")} count={cases.length} dot={cycleIsHere && cycle?.stage === "dataset"}>
           Dataset
         </Tab>
-        <Tab active={tab === "run"} onClick={() => setTab("run")}>
+        <Tab active={tab === "run"} onClick={() => setTab("run")} dot={cycleIsHere && ["preview", "running", "grading", "checking"].includes(cycle?.stage ?? "")}>
           Run
         </Tab>
-        <Tab active={tab === "suggestions"} onClick={() => setTab("suggestions")}>
+        <Tab active={tab === "suggestions"} onClick={() => setTab("suggestions")} dot={cycleIsHere && cycle?.stage === "suggesting"}>
           Suggestions
         </Tab>
       </div>
 
+      {elsewhereLabel && cycle && (
+        <div style={{ fontSize: 12, color: COLORS.faint, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
+          {elsewhereLabel}
+          <Link href={`/p/${cycle.promptId}?project=${cycle.projectId}`} style={{ color: COLORS.accent }}>
+            Go to it
+          </Link>
+        </div>
+      )}
+
+      {tab === "setup" && (
+        project ? (
+          <SetupTab
+            projectId={projectId}
+            promptId={prompt.id}
+            promptName={prompt.name}
+            project={project}
+            draft={draft}
+            cases={cases}
+            versions={versions}
+            can={can}
+            cycle={cycleIsHere ? cycle : null}
+            cycleIsHere={cycleIsHere}
+            anyCycleActive={cycleIsActive}
+            onCycleStarted={() => setTab("dataset")}
+            onNewCycleFromBest={setDraft}
+            onCycleCleared={() => undefined}
+          />
+        ) : (
+          <div style={{ fontSize: 12.5, color: COLORS.muted }}>Loading…</div>
+        )
+      )}
       {tab === "dataset" && (
         <>
           {datasetError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{datasetError.message}</div>}
-          <DatasetTab projectId={projectId} promptId={prompt.id} promptName={prompt.name} draft={draft} cases={cases} can={can} />
+          {cycleIsHere && cycle && ["dataset"].includes(cycle.stage) && (
+            <CycleBanner cycle={cycle} draft={draft} can={can} onStop={stopCycle} />
+          )}
+          <DatasetTab
+            projectId={projectId}
+            promptId={prompt.id}
+            promptName={prompt.name}
+            draft={draft}
+            cases={cases}
+            can={can}
+            locked={cycleIsHere && cycleIsActive && cycle != null && cycle.iteration >= 1}
+          />
         </>
       )}
       {tab === "run" && (
-        <RunTab
-          projectId={projectId}
-          promptId={prompt.id}
-          draft={draft}
-          weights={weights}
-          can={can}
-          runId={runId}
-          onRunStarted={setRunId}
-        />
+        <>
+          {cycleIsHere && cycle && ["preview", "running", "grading", "checking"].includes(cycle.stage) && (
+            <CycleBanner cycle={cycle} draft={draft} can={can} onStop={stopCycle} />
+          )}
+          <RunTab
+            projectId={projectId}
+            promptId={prompt.id}
+            draft={draft}
+            weights={weights}
+            can={can}
+            runId={runId}
+            onRunStarted={setRunId}
+            cycle={cycle}
+          />
+        </>
       )}
       {tab === "suggestions" && (
-        <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
+        <>
+          {cycleIsHere && cycle && cycle.stage === "suggesting" ? (
+            <CycleBanner cycle={cycle} draft={draft} can={can} onStop={stopCycle} />
+          ) : (
+            <SuggestionsPanel projectId={projectId} promptId={prompt.id} draft={draft} can={can} onApply={applySuggestion} />
+          )}
+        </>
       )}
     </div>
   );

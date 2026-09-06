@@ -33,12 +33,22 @@ vi.mock("../features/dataset", () => ({
 vi.mock("../features/runs", () => ({
   RunTab: () => <div data-testid="run-tab" />,
 }));
+vi.mock("../features/setup", () => ({
+  SetupTab: () => <div data-testid="setup-tab" />,
+}));
+vi.mock("../features/cycle", () => ({
+  useCycle: vi.fn(),
+  useCycleElsewhereLabel: () => null,
+  cycleApi: { stop: vi.fn() },
+  CycleBanner: () => <div data-testid="cycle-banner" />,
+}));
 
 import { useSearchParams } from "next/navigation";
 import { usePromptDoc, useProjectDoc, workspaceApi } from "../features/workspace";
 import { useAuth } from "../features/auth/useAuth";
 import { useVersionsStream } from "../features/editor";
 import { useDatasetStream } from "../features/dataset";
+import { useCycle } from "../features/cycle";
 import PromptPage from "../app/(workspace)/p/[promptId]/page";
 import type { Version } from "../shared/types";
 
@@ -58,6 +68,7 @@ function setup(role: string | null, promptOverrides: Partial<typeof basePrompt> 
   vi.mocked(useVersionsStream).mockReturnValue({ data: versions, error: null });
   vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
   vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
+  vi.mocked(useCycle).mockReturnValue({ data: null, error: null });
   return render(<PromptPage params={{ promptId: "p1" }} />);
 }
 
@@ -68,10 +79,12 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReset();
   vi.mocked(useSearchParams).mockReset();
   vi.mocked(useVersionsStream).mockReset();
+  vi.mocked(useCycle).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockResolvedValue({} as never);
   vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
   vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
+  vi.mocked(useCycle).mockReturnValue({ data: null, error: null });
 });
 
 describe("PromptPage", () => {

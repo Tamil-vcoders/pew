@@ -1,6 +1,6 @@
 // web/features/workspace/workspaceApi.ts
 import { apiFetch } from "@/shared/api/client";
-import type { Project, Prompt } from "@/shared/types";
+import type { Project, ProjectCfg, Prompt } from "@/shared/types";
 
 export const workspaceApi = {
   async createProject(name: string): Promise<Project> {
@@ -11,6 +11,18 @@ export const workspaceApi = {
     return apiFetch<Project>(`/projects/${projectId}`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
+    });
+  },
+
+  async updateCfg(projectId: string, cfg: ProjectCfg): Promise<Project> {
+    // Refused (409) by the API while a cycle is active in this project (devspec Appendix A:
+    // "cfg locked while a cycle is active in the project").
+    return apiFetch<Project>(`/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        target: cfg.target, maxIter: cfg.maxIter, budget: cfg.budget, nSug: cfg.nSug,
+        auto: cfg.auto, weights: cfg.weights, models: cfg.models,
+      }),
     });
   },
 
