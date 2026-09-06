@@ -117,8 +117,8 @@ Firebase CLI (`npm install -g firebase-tools`).
 3. **Install dependencies:**
 
    ```bash
-   cd api && pip install -e ".[dev]"
-   cd web && npm ci
+   (cd api && pip install -e ".[dev]")
+   (cd web && npm ci)
    ```
 
 4. **Seed demo data** — two projects and three prompts (budgets ≤ $0.50) plus four demo
