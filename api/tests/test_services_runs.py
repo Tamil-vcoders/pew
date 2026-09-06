@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.adapters.fake_llm import FakeLLMProvider
 from app.domain.models import Case, CaseResult, ModelRates, Run, RunStats
 from app.services.runs import execute_run
+from tests.fakes import QUOTA_MARKER, FaultyFakeLLMProvider
 
 RATES = {
     "exec-model": ModelRates(label="exec", rate_in_per_1m=1.0, rate_out_per_1m=2.0, enabled=True),
@@ -49,3 +50,25 @@ async def test_execute_run_returns_the_finalized_stats_and_actual_cost():
     assert runs.finalized == (stats, cost_actual)
     assert stats.case_count == 1
     assert cost_actual >= 0.0
+
+
+async def test_execute_run_short_circuits_remaining_cases_once_quota_is_exhausted():
+    cases = [
+        Case(
+            id=f"c{i}",
+            input=f"{QUOTA_MARKER} {i}" if i == 0 else f"hello {i}",
+            expected="hello", order=i, source="manual",
+        )
+        for i in range(10)
+    ]
+    runs = _FakeRunRepo()
+
+    stats, _ = await execute_run(
+        project_id="j1", prompt_id="p1", run_id="run1",
+        prompt_text="echo {{input}}", cases=cases, models=MODELS, weights=WEIGHTS,
+        rates=RATES, llm=FaultyFakeLLMProvider(), runs=runs,
+    )
+
+    skipped = [r for r in runs.written if r.status == "error" and "quota" in (r.error or "").lower()]
+    assert len(skipped) >= 2  # case 0 itself, plus at least one later case that never called the LLM
+    assert stats.error_count >= 2
