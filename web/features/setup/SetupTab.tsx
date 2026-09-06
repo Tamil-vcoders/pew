@@ -7,8 +7,10 @@ import { Btn, COLORS } from "@/shared/ui";
 import { EstimateTable, runsApi } from "@/features/runs";
 import { CycleEndedCard, CycleLog, cycleApi } from "@/features/cycle";
 import { workspaceApi } from "@/features/workspace";
+import { settingsApi } from "@/features/settings-global";
+import { ModelStageSelect } from "./ModelStageSelect";
 import type { Capabilities } from "@/shared/rbac/permissions";
-import type { Case, Cycle, Estimate, Project, Version } from "@/shared/types";
+import type { Case, Cycle, Estimate, ModelRegistry, Project, Version } from "@/shared/types";
 
 const inputStyle = {
   background: "#0F1116", color: COLORS.text, border: `0.5px solid ${COLORS.border}`,
@@ -69,6 +71,7 @@ export function SetupTab({
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [showEndedCard, setShowEndedCard] = useState(true);
+  const [registry, setRegistry] = useState<ModelRegistry | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +83,17 @@ export function SetupTab({
       cancelled = true;
     };
   }, [projectId, promptId, draft]);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi
+      .getModelRegistry()
+      .then((r) => !cancelled && setRegistry(r))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function commitCfg(next: Project["cfg"]) {
     setCfg(next);
@@ -215,11 +229,19 @@ export function SetupTab({
           {MODEL_STAGES.map(([key, label]) => (
             <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: COLORS.surface, fontSize: 12 }}>
               <span style={{ flex: 1 }}>{label}</span>
-              <input
-                value={cfg.models[key]} disabled={locked}
-                onChange={(e) => commitCfg({ ...cfg, models: { ...cfg.models, [key]: e.target.value } })}
-                style={{ ...inputStyle, width: 200, padding: "4px 6px", fontSize: 11.5, fontFamily: "ui-monospace, monospace" }}
-              />
+              {registry ? (
+                <ModelStageSelect
+                  registry={registry}
+                  value={cfg.models[key]}
+                  disabled={locked}
+                  onChange={(modelId) => commitCfg({ ...cfg, models: { ...cfg.models, [key]: modelId } })}
+                />
+              ) : (
+                <input
+                  value={cfg.models[key]} disabled readOnly
+                  style={{ ...inputStyle, width: 200, padding: "4px 6px", fontSize: 11.5, fontFamily: "ui-monospace, monospace" }}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -1,5 +1,9 @@
 # CLAUDE.md — Prompt Evaluation Workbench (pew)
 
+**Current status:** Phases 0–4 ✅ (auth/RBAC, editor + validation + versions, datasets +
+Gemini runs + suggestions, improvement cycle w/ caps, end reasons, auto mode). Now building:
+Phase 5.
+
 This repo implements **docs/devspec.md** exactly. Read it before any task.
 Behaviour questions the devspec doesn't answer: **docs/prd.md** (PRD v3).
 UI/interaction questions the PRD doesn't answer: **docs/prototype.jsx** wins.

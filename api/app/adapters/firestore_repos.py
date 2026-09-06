@@ -9,6 +9,7 @@ from typing import Any
 from google.cloud import firestore
 
 from app.domain.models import (
+    AuditEntry,
     Case,
     CaseResult,
     CaseSource,
@@ -18,6 +19,7 @@ from app.domain.models import (
     CyclePending,
     CycleScore,
     ModelRates,
+    PrivacySettings,
     Project,
     ProjectCfg,
     Prompt,
@@ -46,6 +48,20 @@ async def _snapshot(
     # which threads the transaction id through `_prep_batch_get` the same way and was
     # confirmed race-safe with two concurrent transactions against the emulator.
     return await ref.get(transaction=transaction)
+
+
+def _audit_entry_from_snap(snap: firestore.DocumentSnapshot) -> AuditEntry:
+    data = snap.to_dict() or {}
+    ts = data.get("ts")
+    return AuditEntry(
+        id=snap.id,
+        actor=data.get("actor", ""),
+        action=data.get("action", ""),
+        subject=data.get("subject", ""),
+        before=data.get("before"),
+        after=data.get("after"),
+        ts=ts if isinstance(ts, datetime) else datetime.now(UTC),
+    )
 
 
 def _user_from_snap(snap: firestore.DocumentSnapshot) -> User:
@@ -88,6 +104,10 @@ class FirestoreAuditRepo:
         else:
             await ref.set(payload)
 
+    async def list_all(self) -> list[AuditEntry]:
+        query = self._client.collection("auditLogs").order_by("ts", direction=firestore.Query.DESCENDING)
+        return [_audit_entry_from_snap(snap) async for snap in query.stream()]
+
 
 class FirestoreUserRepo:
     def __init__(self, client: firestore.AsyncClient, audit: AuditRepo) -> None:
@@ -123,18 +143,41 @@ class FirestoreUserRepo:
             )
             if is_first:
                 transaction.set(bootstrap_ref, {"adminAssigned": True, "adminUid": uid})
-                await self._audit.append(
-                    actor=uid,
-                    action="bootstrap-admin",
-                    subject=uid,
-                    before=None,
-                    after={"role": role},
-                    transaction=transaction,
-                )
+            # Every new user gets an audit entry now (US-18), not just the first — the action
+            # name is what distinguishes the bootstrap-admin case from an ordinary sign-up.
+            await self._audit.append(
+                actor=uid,
+                action="bootstrap-admin" if is_first else "user-signup",
+                subject=uid,
+                before=None,
+                after={"role": role},
+                transaction=transaction,
+            )
             return User(uid=uid, email=email or "", name=display_name, role=role, created_at=created_at)
 
         transaction = self._client.transaction()
         return await _run(transaction)
+
+    async def list_all(self) -> list[User]:
+        return [
+            _user_from_snap(snap)
+            async for snap in self._client.collection("users").order_by("createdAt").stream()
+        ]
+
+    async def update_role(self, uid: str, role: str) -> User:
+        ref = self._ref(uid)
+        await ref.update({"role": role})
+        snap = await ref.get()
+        return _user_from_snap(snap)
+
+    async def update_name(self, uid: str, name: str) -> User:
+        ref = self._ref(uid)
+        await ref.update({"name": name})
+        snap = await ref.get()
+        return _user_from_snap(snap)
+
+    async def anonymize(self, uid: str) -> None:
+        await self._ref(uid).update({"name": "Deleted user", "email": "", "role": "viewer"})
 
 
 def _cfg_to_dict(cfg: ProjectCfg) -> dict[str, Any]:
@@ -615,6 +658,58 @@ class FirestoreModelRegistryRepo:
             snap.id: _model_rates_from_snap(snap)
             async for snap in self._client.collection("modelRegistry").stream()
         }
+
+    async def update(
+        self,
+        model_id: str,
+        *,
+        rate_in_per_1m: float | None = None,
+        rate_out_per_1m: float | None = None,
+        enabled: bool | None = None,
+    ) -> ModelRates:
+        ref = self._client.collection("modelRegistry").document(model_id)
+        snap = await ref.get()
+        if not snap.exists:
+            raise LookupError(f"Unknown model {model_id!r}")
+        patch: dict[str, Any] = {}
+        if rate_in_per_1m is not None:
+            patch["ratesInPer1M"] = rate_in_per_1m
+        if rate_out_per_1m is not None:
+            patch["ratesOutPer1M"] = rate_out_per_1m
+        if enabled is not None:
+            patch["enabled"] = enabled
+        if patch:
+            await ref.update(patch)
+            snap = await ref.get()
+        return _model_rates_from_snap(snap)
+
+
+class FirestoreOrgSettingsRepo:
+    """Reads/writes a single doc `orgSettings/privacy` — fetched only via the API (never
+    onSnapshot), so no firestore.rules change is needed: default-deny already covers a
+    collection with no explicit rule, and nothing client-side ever reads it directly."""
+
+    _DEFAULT = PrivacySettings(retention_days=90, telemetry=True)
+
+    def __init__(self, client: firestore.AsyncClient) -> None:
+        self._client = client
+
+    def _ref(self) -> firestore.AsyncDocumentReference:
+        return self._client.collection("orgSettings").document("privacy")
+
+    async def get_privacy(self) -> PrivacySettings:
+        snap = await self._ref().get()
+        if not snap.exists:
+            return self._DEFAULT
+        data = snap.to_dict() or {}
+        return PrivacySettings(
+            retention_days=data.get("retentionDays", self._DEFAULT.retention_days),
+            telemetry=data.get("telemetry", self._DEFAULT.telemetry),
+        )
+
+    async def update_privacy(self, *, retention_days: int, telemetry: bool) -> PrivacySettings:
+        await self._ref().set({"retentionDays": retention_days, "telemetry": telemetry})
+        return PrivacySettings(retention_days=retention_days, telemetry=telemetry)
 
 
 def _suggestion_to_dict(s: Suggestion) -> dict[str, Any]:

@@ -1,8 +1,11 @@
 """Cycle orchestration — one function per app/routes/cycles.py action. State transitions
 happen only in app/domain/cycle.py; this module re-hydrates from the cycle doc on every
 call (no in-memory cycle state anywhere), calls domain/cycle.py for the decision, and drives
-the existing Phase 3 run/suggestion services through app.adapters.inline_tasks (no Cloud
-Tasks — that's Phase 5). See docs/devspec.md §10 and Appendix B.
+the run/suggestion services. Only the iteration-execution leg goes through the `TaskQueue`
+port (`deps.tasks`, Phase 5 — inline locally, Cloud Tasks when deployed); the three cheap
+auto-mode pacing helpers still schedule directly via app.adapters.inline_tasks regardless of
+TASKS_MODE (see docs devspec.md §8 and the Phase 5 plan for why). See docs/devspec.md §10 and
+Appendix B.
 """
 from __future__ import annotations
 
@@ -38,6 +41,7 @@ from app.ports.repos import (
     RunRepo,
     VersionRepo,
 )
+from app.ports.tasks import TaskQueue
 from app.services.runs import execute_run
 from app.services.suggestions import draft_suggestions
 
@@ -58,6 +62,7 @@ class CycleDeps:
     registry: ModelRegistryRepo
     llm: LLMProvider
     background_tasks: BackgroundTasks
+    tasks: TaskQueue
 
 
 def _with_log(cycle: Cycle, messages: Sequence[str]) -> Cycle:
@@ -152,11 +157,7 @@ async def confirm_iteration(cycle_id: str, *, text: str, actor_uid: str, deps: C
     started = cyc.begin_iteration(cycle, run_id=run_id)
     started = await _save_and_log(deps, started, [f"Iteration {started.iteration}: running evaluation…"])
 
-    inline_tasks.schedule(
-        deps.background_tasks, _run_iteration_and_advance,
-        cycle_id=cycle_id, project_id=cycle.project_id, prompt_id=cycle.prompt_id,
-        run_id=run_id, version_n=version_n, prompt_text=text, cases=cases, deps=deps,
-    )
+    await deps.tasks.enqueue_iteration(cycle_id=cycle_id, iteration=started.iteration)
     return started
 
 
@@ -174,6 +175,35 @@ async def _create_or_reuse_version(deps: CycleDeps, cycle: Cycle, prompt: Prompt
         cycle.project_id, cycle.prompt_id, text=text, note="Manual edit", technique=None, created_by=actor_uid,
     )
     return created.n
+
+
+async def run_iteration_task(*, cycle_id: str, iteration: int, deps: CycleDeps) -> None:
+    """Idempotent entry point both TaskQueue adapters call: InlineTaskQueue schedules this on
+    FastAPI's BackgroundTasks (local dev/tests), routes/internal.py awaits it directly for a
+    Cloud Tasks delivery. Devspec §8's literal redelivery contract — "already in scores[] or
+    status != active" — operationalized as `len(cycle.scores) >= iteration`: CycleScore.n is
+    a *version* number, not an iteration counter, so scores can't be matched to iterations by
+    value, but exactly one CycleScore is appended per iteration that finishes scoring and
+    cycle.iteration increments by exactly 1 per begin_iteration, so the two counts stay in
+    lockstep and `len(scores) >= iteration` means "already scored."
+
+    Known gap (not solved here, narrower than the stated contract): a redelivery arriving
+    *during* execute_run, before mark_running_complete commits, could re-run the eval once
+    before `_require_stage(cycle, "running")` blocks the second commit."""
+    cycle = await deps.cycles.get(cycle_id)
+    if cycle is None or cycle.status != "active" or len(cycle.scores) >= iteration:
+        return
+    assert cycle.current_run_id is not None  # begin_iteration sets this before ever enqueueing
+    run = await deps.runs.get(cycle.project_id, cycle.prompt_id, cycle.current_run_id)
+    assert run is not None  # the run doc is created before begin_iteration persists current_run_id
+    version = await deps.versions.get(cycle.project_id, cycle.prompt_id, run.version_n)
+    assert version is not None  # versions are append-only; the run's own version can't disappear
+    cases = await deps.dataset.list_by_prompt(cycle.project_id, cycle.prompt_id)
+    await _run_iteration_and_advance(
+        cycle_id=cycle_id, project_id=cycle.project_id, prompt_id=cycle.prompt_id,
+        run_id=cycle.current_run_id, version_n=run.version_n, prompt_text=version.text,
+        cases=cases, deps=deps,
+    )
 
 
 async def _run_iteration_and_advance(

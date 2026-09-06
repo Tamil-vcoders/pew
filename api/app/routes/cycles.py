@@ -1,8 +1,11 @@
 # api/app/routes/cycles.py
+from typing import cast
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.deps import (
+    build_task_queue,
     current_user,
     get_cycle_repo,
     get_dataset_repo,
@@ -25,6 +28,7 @@ from app.ports.repos import (
     RunRepo,
     VersionRepo,
 )
+from app.ports.tasks import TaskQueue
 from app.services.cycles import (
     CycleDeps,
     approve_dataset_action,
@@ -112,10 +116,15 @@ def _deps(
     registry: ModelRegistryRepo = Depends(get_model_registry_repo),
     llm: LLMProvider = Depends(get_llm_provider),
 ) -> CycleDeps:
-    return CycleDeps(
+    # Two-step construction (see deps.py::build_task_queue's docstring): InlineTaskQueue needs
+    # a reference to this very CycleDeps, so it can't be built before the dataclass exists.
+    deps = CycleDeps(
         cycles=cycles, prompts=prompts, versions=versions, dataset=dataset,
         runs=runs, registry=registry, llm=llm, background_tasks=background_tasks,
+        tasks=cast(TaskQueue, None),
     )
+    deps.tasks = build_task_queue(background_tasks, deps)
+    return deps
 
 
 @router.post("", status_code=201, dependencies=[Depends(require("contributor"))])

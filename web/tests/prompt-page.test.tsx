@@ -61,7 +61,7 @@ const version1: Version = { n: 1, text: "Summarize the ticket.", note: "Initial 
 function setup(role: string | null, promptOverrides: Partial<typeof basePrompt> = {}, versions: Version[] = [version1]) {
   vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
   vi.mocked(useAuth).mockReturnValue({
-    firebaseUser: null, loading: false, signOut: vi.fn(),
+    firebaseUser: null, loading: false, signOut: vi.fn(), refreshProfile: vi.fn(),
     profile: role ? { uid: "u1", email: "a@b.com", name: "A", role: role as never, createdAt: "x" } : null,
   });
   vi.mocked(usePromptDoc).mockReturnValue({ data: { ...basePrompt, ...promptOverrides }, error: null });
@@ -141,7 +141,7 @@ describe("PromptPage", () => {
     // rather than staying stuck at "".
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
     vi.mocked(useAuth).mockReturnValue({
-      firebaseUser: null, loading: false, signOut: vi.fn(),
+      firebaseUser: null, loading: false, signOut: vi.fn(), refreshProfile: vi.fn(),
       profile: { uid: "u1", email: "a@b.com", name: "A", role: "contributor" as never, createdAt: "x" },
     });
     vi.mocked(usePromptDoc).mockReturnValue({ data: basePrompt, error: null });
@@ -158,7 +158,7 @@ describe("PromptPage", () => {
   it("shows a loading state while the prompt hasn't loaded yet", () => {
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
     vi.mocked(useAuth).mockReturnValue({
-      firebaseUser: null, loading: false, signOut: vi.fn(),
+      firebaseUser: null, loading: false, signOut: vi.fn(), refreshProfile: vi.fn(),
       profile: { uid: "u1", email: "a@b.com", name: "A", role: "viewer" as never, createdAt: "x" },
     });
     vi.mocked(usePromptDoc).mockReturnValue({ data: null, error: null });
@@ -169,7 +169,7 @@ describe("PromptPage", () => {
   it("shows an inline error message instead of the form when the prompt stream errors", () => {
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
     vi.mocked(useAuth).mockReturnValue({
-      firebaseUser: null, loading: false, signOut: vi.fn(),
+      firebaseUser: null, loading: false, signOut: vi.fn(), refreshProfile: vi.fn(),
       profile: { uid: "u1", email: "a@b.com", name: "A", role: "viewer" as never, createdAt: "x" },
     });
     vi.mocked(usePromptDoc).mockReturnValue({ data: null, error: new Error("permission-denied") });

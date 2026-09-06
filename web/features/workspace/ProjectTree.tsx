@@ -42,6 +42,7 @@ function ProjectRow({
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (q && visible.length === 0) return null;
+  const noPromptsAtAll = prompts.length === 0 && !q;
 
   async function commitRename() {
     if (nameDraft === project.name) return;
@@ -93,6 +94,9 @@ function ProjectRow({
       {promptsError && (
         <div style={{ fontSize: 10, color: COLORS.bad, padding: "0 4px 4px" }}>{promptsError.message}</div>
       )}
+      {noPromptsAtAll && (
+        <div style={{ fontSize: 10.5, color: COLORS.faint, padding: "0 4px 6px 20px" }}>No prompts in this project yet.</div>
+      )}
       {visible.map((prompt) => (
         <Link
           key={prompt.id}
@@ -137,7 +141,7 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: 230 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: "100%" }}>
       <div style={{ display: "flex", gap: 6 }}>
         <input
           placeholder="name or tag…"
@@ -153,6 +157,9 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
       </div>
       {createError && <div style={{ fontSize: 10.5, color: COLORS.bad }}>{createError}</div>}
       {projectsError && <div style={{ fontSize: 10.5, color: COLORS.bad }}>{projectsError.message}</div>}
+      {projects.length === 0 && !projectsError && (
+        <div style={{ fontSize: 10.5, color: COLORS.faint }}>No projects yet.</div>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflow: "auto" }}>
         {projects.map((project) => (
           <ProjectRow

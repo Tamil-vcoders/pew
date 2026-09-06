@@ -13,6 +13,11 @@ dependencies = [
     "google-cloud-firestore>=2.20",
     "pydantic-settings>=2.5",
     "google-genai>=1.0",
+    # Phase 5: Cloud Tasks execution + OIDC verification for /internal/iterations (devspec §8).
+    # google-auth was already a transitive dep (via firebase-admin/firestore); pinned here
+    # because it's now imported directly (google.oauth2.id_token, google.auth.transport.requests).
+    "google-cloud-tasks>=2.16",
+    "google-auth>=2.30",
 ]
 
 [project.optional-dependencies]
