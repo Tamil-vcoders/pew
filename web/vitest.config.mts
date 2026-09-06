@@ -1,7 +1,7 @@
 // web/vitest.config.mts
 import path from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -13,5 +13,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
+    // Playwright's e2e/happy-path.spec.ts otherwise matches vitest's default
+    // **/*.spec.ts include glob and gets picked up (and fails) as a vitest test file.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

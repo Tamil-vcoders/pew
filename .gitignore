@@ -38,3 +38,9 @@ __pycache__/
 # Firebase emulators
 firestore-debug.log
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
