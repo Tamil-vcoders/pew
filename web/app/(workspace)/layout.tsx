@@ -101,7 +101,10 @@ function HeaderActivePromptActions() {
         </button>
       )}
       {header.canEdit && (
-        <Btn small onClick={header.onRunOnce}>
+        // aria-label distinguishes this from the Run tab's own "Run once" button (RunTab.tsx),
+        // which shares the same visible text -- without it, getByRole("button", { name: "Run
+        // once" }) queries (e2e/happy-path.spec.ts) can't tell the two apart.
+        <Btn small onClick={header.onRunOnce} aria-label="Run once (switch to Run tab)">
           <Play size={12} /> Run once
         </Btn>
       )}
@@ -150,6 +153,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
                   </div>
                   <Link href="/settings" title="Global settings">
                     <button
+                      title="Global settings"
                       style={{
                         background: "transparent",
                         border: `0.5px solid ${COLORS.border}`,

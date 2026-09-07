@@ -26,9 +26,10 @@ test("sign in, edit, run, apply suggestion, cycle to target-met", async ({ page 
   // Editor + live validation: the seeded triage prompt fails all 4 catalogue rules.
   await expect(page.getByText(/Hedging language/i)).toBeVisible();
 
-  // Run tab: run once, wait for the composite to populate.
-  await page.getByRole("button", { name: "Run" }).click();
-  await page.getByRole("button", { name: "Run once" }).click();
+  // Run tab: run once, wait for the composite to populate. ("Run", exact: the header also has
+  // a "Run once" shortcut button that a non-exact match would collide with.)
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await page.getByRole("button", { name: "Run once", exact: true }).click();
   await page.getByRole("button", { name: "Confirm & run" }).click();
   await expect(page.getByText("composite")).toBeVisible();
   await expect(page.locator("text=cases").locator("..").getByText(/3 \/ 3/)).toBeVisible({ timeout: 20_000 });
@@ -47,7 +48,7 @@ test("sign in, edit, run, apply suggestion, cycle to target-met", async ({ page 
   await page.getByRole("button", { name: "Dataset" }).click();
   await page.getByRole("button", { name: "Approve dataset & continue" }).click();
 
-  await page.getByRole("button", { name: "Run" }).click();
+  await page.getByRole("button", { name: "Run", exact: true }).click();
   await page.getByRole("button", { name: "Confirm & run iteration" }).click();
   await page.getByRole("button", { name: "Continue to checks" }).click({ timeout: 20_000 });
 
