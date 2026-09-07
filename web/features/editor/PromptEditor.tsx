@@ -1,6 +1,7 @@
 // web/features/editor/PromptEditor.tsx
 "use client";
 import { useMemo } from "react";
+import { RotateCcw } from "lucide-react";
 import { COLORS } from "@/shared/ui/tokens";
 import { ValidationPanel, validateText } from "@/features/validation";
 
@@ -30,9 +31,9 @@ export function PromptEditor({
           {isDirty && !readOnly && (
             <button
               onClick={onRevert}
-              style={{ background: "none", border: "none", color: COLORS.faint, fontSize: 11.5, cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: COLORS.faint, fontSize: 11.5, cursor: "pointer" }}
             >
-              ↺ revert
+              <RotateCcw size={12} /> revert
             </button>
           )}
         </div>

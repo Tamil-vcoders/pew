@@ -1,3 +1,8 @@
+export {
+  ActivePromptHeaderProvider,
+  useActivePromptHeader,
+  type ActivePromptHeaderData,
+} from "./ActivePromptHeader";
 export { ProjectTree } from "./ProjectTree";
 export { usePromptDoc } from "./usePromptDoc";
 export { usePromptsStream } from "./usePromptsStream";

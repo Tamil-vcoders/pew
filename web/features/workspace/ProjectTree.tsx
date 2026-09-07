@@ -2,6 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { capabilitiesFor, type Role } from "@/shared/rbac/permissions";
 import { COLORS } from "@/shared/ui/tokens";
@@ -84,8 +85,13 @@ function ProjectRow({
           </span>
         )}
         {can.edit && (
-          <button title="New prompt in this project" aria-label="New prompt in this project" onClick={createPrompt}>
-            +
+          <button
+            title="New prompt in this project"
+            aria-label="New prompt in this project"
+            onClick={createPrompt}
+            style={{ display: "flex", color: COLORS.muted, background: "transparent", border: "none", cursor: "pointer", padding: 2 }}
+          >
+            <Plus size={13} />
           </button>
         )}
       </div>
@@ -111,7 +117,10 @@ function ProjectRow({
           }}
         >
           <span style={{ fontSize: 12, fontWeight: 500 }}>{prompt.name}</span>
-          <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+            <span style={{ fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace", fontSize: 9.5, color: COLORS.faint }}>
+              v{prompt.latestVersion}
+            </span>
             {prompt.tags.slice(0, 3).map((tag) => (
               <span key={tag} style={{ fontSize: 9.5, color: COLORS.muted, background: COLORS.surface2, borderRadius: 3, padding: "0 4px" }}>
                 {tag}
@@ -152,8 +161,13 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
           style={{ flex: 1 }}
         />
         {can.settings && (
-          <button title="New project" aria-label="New project" onClick={createProject}>
-            +
+          <button
+            title="New project"
+            aria-label="New project"
+            onClick={createProject}
+            style={{ display: "flex", color: COLORS.muted, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, cursor: "pointer", padding: 5 }}
+          >
+            <Plus size={13} />
           </button>
         )}
       </div>

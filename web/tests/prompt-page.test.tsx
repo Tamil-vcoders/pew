@@ -1,12 +1,20 @@
 // web/tests/prompt-page.test.tsx
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useSearchParams: vi.fn() }));
+// The prompt name input, tags, version chip, and Archive button used to render directly in
+// this page; they now live in the persistent header bar (app/(workspace)/layout.tsx), which
+// this test doesn't render. This page's job is only to PUBLISH the right data into
+// ActivePromptHeaderContext (via useActivePromptHeader().setHeader) -- verified below by
+// mocking the hook itself and inspecting what it was called with. How the layout renders
+// that data is covered separately by tests/workspace-layout.test.tsx.
+const setHeaderMock = vi.fn();
 vi.mock("../features/workspace", () => ({
   usePromptDoc: vi.fn(),
   useProjectDoc: vi.fn(),
   workspaceApi: { updatePrompt: vi.fn() },
+  useActivePromptHeader: () => ({ header: null, setHeader: setHeaderMock }),
 }));
 vi.mock("../features/auth/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../features/editor", () => ({
@@ -82,17 +90,17 @@ beforeEach(() => {
   vi.mocked(useCycle).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockResolvedValue({} as never);
+  setHeaderMock.mockReset();
   vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
   vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
   vi.mocked(useCycle).mockReturnValue({ data: null, error: null });
 });
 
 describe("PromptPage", () => {
-  it("shows the name as readOnly and no Archive button for a viewer", () => {
+  it("publishes canEdit:false and canSettings:false for a viewer (the header renders the name read-only and hides Archive for these)", () => {
     setup("viewer");
-    const input = screen.getByDisplayValue("Ticket triage");
-    expect(input).toHaveAttribute("readonly");
-    expect(screen.queryByRole("button", { name: /archive/i })).not.toBeInTheDocument();
+    const lastCall = setHeaderMock.mock.calls.at(-1)?.[0];
+    expect(lastCall).toMatchObject({ promptName: "Ticket triage", canEdit: false, canSettings: false });
   });
 
   it("shows the editor read-only for a viewer", () => {
@@ -105,11 +113,30 @@ describe("PromptPage", () => {
     expect(screen.getByTestId("prompt-editor")).toHaveAttribute("data-readonly", "false");
   });
 
-  it("shows an Archive button for a maintainer, which calls updatePrompt with archived:true", () => {
+  it("publishes canSettings:true for a maintainer, and its onToggleArchive calls updatePrompt with archived:true", () => {
     setup("maintainer");
-    const button = screen.getByRole("button", { name: "Archive" });
-    fireEvent.click(button);
+    const lastCall = setHeaderMock.mock.calls.at(-1)?.[0];
+    expect(lastCall).toMatchObject({ canSettings: true, archived: false });
+    lastCall.onToggleArchive();
     expect(workspaceApi.updatePrompt).toHaveBeenCalledWith("j1", "p1", { archived: true });
+  });
+
+  it("publishes the project name, tags, and version, and its onRunOnce switches to the Run tab", () => {
+    setup("contributor");
+    const lastCall = setHeaderMock.mock.calls.at(-1)?.[0];
+    expect(lastCall).toMatchObject({ tags: ["draft"], latestVersion: 1, isDirty: false });
+    expect(screen.queryByTestId("run-tab")).not.toBeInTheDocument();
+    act(() => {
+      lastCall.onRunOnce();
+    });
+    expect(screen.getByTestId("run-tab")).toBeInTheDocument();
+  });
+
+  it("its onRename calls updatePrompt with the new name", () => {
+    setup("contributor");
+    const lastCall = setHeaderMock.mock.calls.at(-1)?.[0];
+    lastCall.onRename("Renamed prompt");
+    expect(workspaceApi.updatePrompt).toHaveBeenCalledWith("j1", "p1", { name: "Renamed prompt" });
   });
 
   it("passes the current version's text into the editor as the initial draft", () => {

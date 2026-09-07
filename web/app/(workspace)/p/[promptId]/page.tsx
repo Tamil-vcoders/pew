@@ -1,11 +1,11 @@
 // web/app/(workspace)/p/[promptId]/page.tsx
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
-import { useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
+import { useActivePromptHeader, useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
 import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/features/editor";
 import { SuggestionsPanel } from "@/features/suggestions";
 import { DatasetTab, useDatasetStream } from "@/features/dataset";
@@ -18,25 +18,39 @@ import type { Prompt, Suggestion } from "@/shared/types";
 
 type WorkTab = "setup" | "dataset" | "run" | "suggestions";
 
-function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
-  // Local buffer for the in-progress name edit — binding directly to the live
-  // Firestore-backed prompt.name makes every keystroke fire a PATCH. Commit on blur instead.
-  const [nameDraft, setNameDraft] = useState(prompt.name);
-  useEffect(() => setNameDraft(prompt.name), [prompt.name]);
+// Publishes this prompt's name/tags/version/archive state into the persistent header bar
+// (app/(workspace)/layout.tsx renders it) via ActivePromptHeaderContext, and clears it on
+// unmount/prompt-change so the header falls back to the generic title. Returns any
+// rename/archive action error so the page body can still surface it near the editor.
+function useActivePromptHeaderSync({
+  prompt,
+  projectId,
+  can,
+  isDirty,
+  onRunOnce,
+}: {
+  prompt: Prompt;
+  projectId: string;
+  can: Capabilities;
+  isDirty: boolean;
+  onRunOnce: () => void;
+}): string | null {
+  const { setHeader } = useActivePromptHeader();
+  const { data: project } = useProjectDoc(projectId);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function commitName() {
-    if (nameDraft === prompt.name) return;
+  async function onRename(name: string) {
+    if (name === prompt.name) return;
     try {
       setActionError(null);
-      await workspaceApi.updatePrompt(projectId, prompt.id, { name: nameDraft });
+      await workspaceApi.updatePrompt(projectId, prompt.id, { name });
     } catch (err) {
       console.error(err);
       setActionError(err instanceof Error ? err.message : "Failed to rename prompt.");
     }
   }
 
-  async function toggleArchived() {
+  async function onToggleArchive() {
     try {
       setActionError(null);
       await workspaceApi.updatePrompt(projectId, prompt.id, { archived: !prompt.archived });
@@ -46,30 +60,25 @@ function PromptHeader({ prompt, projectId, can }: { prompt: Prompt; projectId: s
     }
   }
 
-  return (
-    <div>
-      <input
-        value={nameDraft}
-        readOnly={!can.edit}
-        onChange={(e) => setNameDraft(e.target.value)}
-        onBlur={commitName}
-        style={{ fontSize: 17, fontWeight: 600, background: "transparent", border: "none", color: COLORS.text }}
-      />
-      <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
-        {prompt.tags.map((tag) => (
-          <span key={tag} style={{ fontSize: 10, color: COLORS.muted, background: COLORS.surface2, borderRadius: 4, padding: "2px 6px" }}>
-            {tag}
-          </span>
-        ))}
-      </div>
-      {actionError && <div style={{ fontSize: 11, color: COLORS.bad, marginTop: 6 }}>{actionError}</div>}
-      {can.settings && (
-        <button style={{ marginTop: 14 }} onClick={toggleArchived}>
-          {prompt.archived ? "Unarchive" : "Archive"}
-        </button>
-      )}
-    </div>
-  );
+  useEffect(() => {
+    setHeader({
+      projectName: project?.name ?? "",
+      promptName: prompt.name,
+      tags: prompt.tags,
+      latestVersion: prompt.latestVersion,
+      isDirty,
+      archived: prompt.archived,
+      canEdit: can.edit,
+      canSettings: can.settings,
+      onRename,
+      onToggleArchive,
+      onRunOnce,
+    });
+    return () => setHeader(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.name, prompt, isDirty, can.edit, can.settings, onRunOnce, setHeader]);
+
+  return actionError;
 }
 
 function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId: string; can: Capabilities }) {
@@ -114,9 +123,27 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
     if (cycle) await cycleApi.stop(cycle.id);
   }
 
+  // The header bar's "Run once" button (app/(workspace)/layout.tsx) is a shortcut to the
+  // Run tab's own "Run once" -> "Confirm & run" flow (RunTab.tsx), not a second copy of it --
+  // RunTab already handles the estimate preview before spending anything.
+  //
+  // Stable identity (useCallback) matters here: this closure sits in
+  // useActivePromptHeaderSync's effect dependency array, and that effect calls
+  // setHeader -- a new closure every render would re-fire the effect every time this
+  // component re-renders for ANY reason (including the re-render setHeader itself causes
+  // via ActivePromptHeaderContext), which is an infinite loop.
+  const onRunOnce = useCallback(() => setTab("run"), []);
+  const headerActionError = useActivePromptHeaderSync({
+    prompt,
+    projectId,
+    can,
+    isDirty: draft !== currentVersionText,
+    onRunOnce,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <PromptHeader prompt={prompt} projectId={projectId} can={can} />
+      {headerActionError && <div style={{ fontSize: 11.5, color: COLORS.bad }}>{headerActionError}</div>}
       <PromptEditor
         draft={draft}
         currentVersionText={currentVersionText}
