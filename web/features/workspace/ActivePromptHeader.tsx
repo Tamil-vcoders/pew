@@ -8,7 +8,7 @@
 // tree; a layout cannot read a child page's route params or local state directly. This
 // context is how the page publishes its prompt's header data upward for the layout to render.
 "use client";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 export interface ActivePromptHeaderData {
   projectName: string;
@@ -33,11 +33,13 @@ const ActivePromptHeaderContext = createContext<ActivePromptHeaderContextValue |
 
 export function ActivePromptHeaderProvider({ children }: { children: ReactNode }) {
   const [header, setHeader] = useState<ActivePromptHeaderData | null>(null);
-  return (
-    <ActivePromptHeaderContext.Provider value={{ header, setHeader }}>
-      {children}
-    </ActivePromptHeaderContext.Provider>
-  );
+  // Memoized so a re-render of the provider that leaves `header` unchanged doesn't hand
+  // every context consumer a new object identity -- important because a consumer that also
+  // publishes into this context (the prompt page, via useActivePromptHeaderSync) would
+  // otherwise re-render itself, recreate its effect's dependency closures, and re-fire the
+  // publishing effect indefinitely.
+  const value = useMemo(() => ({ header, setHeader }), [header]);
+  return <ActivePromptHeaderContext.Provider value={value}>{children}</ActivePromptHeaderContext.Provider>;
 }
 
 export function useActivePromptHeader(): ActivePromptHeaderContextValue {

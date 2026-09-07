@@ -1,6 +1,6 @@
 // web/app/(workspace)/p/[promptId]/page.tsx
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
@@ -126,12 +126,19 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
   // The header bar's "Run once" button (app/(workspace)/layout.tsx) is a shortcut to the
   // Run tab's own "Run once" -> "Confirm & run" flow (RunTab.tsx), not a second copy of it --
   // RunTab already handles the estimate preview before spending anything.
+  //
+  // Stable identity (useCallback) matters here: this closure sits in
+  // useActivePromptHeaderSync's effect dependency array, and that effect calls
+  // setHeader -- a new closure every render would re-fire the effect every time this
+  // component re-renders for ANY reason (including the re-render setHeader itself causes
+  // via ActivePromptHeaderContext), which is an infinite loop.
+  const onRunOnce = useCallback(() => setTab("run"), []);
   const headerActionError = useActivePromptHeaderSync({
     prompt,
     projectId,
     can,
     isDirty: draft !== currentVersionText,
-    onRunOnce: () => setTab("run"),
+    onRunOnce,
   });
 
   return (
