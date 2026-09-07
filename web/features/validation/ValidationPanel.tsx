@@ -1,11 +1,12 @@
 "use client";
+import { CheckCircle2, MinusCircle, XCircle } from "lucide-react";
 import { COLORS } from "@/shared/ui/tokens";
 import type { ValidationResult } from "./rules";
 
 function StatusGlyph({ status }: { status: ValidationResult["status"] }) {
-  if (status === "pass") return <span style={{ color: COLORS.good }}>✓</span>;
-  if (status === "fail") return <span style={{ color: COLORS.bad }}>✕</span>;
-  return <span style={{ color: COLORS.faint }}>–</span>;
+  if (status === "pass") return <CheckCircle2 size={14} color={COLORS.good} />;
+  if (status === "fail") return <XCircle size={14} color={COLORS.bad} />;
+  return <MinusCircle size={14} color={COLORS.faint} />;
 }
 
 export function ValidationPanel({ results }: { results: ValidationResult[] }) {

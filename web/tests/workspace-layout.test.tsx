@@ -9,9 +9,20 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
-vi.mock("../features/workspace", () => ({
-  ProjectTree: ({ role }: { role: string | null }) => <div>tree for {role ?? "signed out"}</div>,
-}));
+// ActivePromptHeaderProvider/useActivePromptHeader are plain React context (no Firestore
+// dependency) -- import the real implementation directly from its own file (not through
+// "../features/workspace"'s aggregating index.ts, which also re-exports Firestore-dependent
+// hooks like useProjectsStream that would throw in this test's env) so this test exercises
+// the actual publish/read wiring the layout and the prompt page rely on. Only ProjectTree
+// (which does need onSnapshot wiring) is replaced with a stub.
+vi.mock("../features/workspace", async () => {
+  const real = await import("../features/workspace/ActivePromptHeader");
+  return {
+    ActivePromptHeaderProvider: real.ActivePromptHeaderProvider,
+    useActivePromptHeader: real.useActivePromptHeader,
+    ProjectTree: ({ role }: { role: string | null }) => <div>tree for {role ?? "signed out"}</div>,
+  };
+});
 // The header chip's own behavior (onSnapshot subscriptions, etc.) is covered by
 // tests/use-cycle.test.tsx and its own component tests — stub it here so this layout test
 // doesn't need real Firestore wiring just to render the page shell.
@@ -29,7 +40,9 @@ vi.mock("../features/auth/useAuth", () => ({
   }),
 }));
 
+import { useEffect } from "react";
 import WorkspaceLayout from "../app/(workspace)/layout";
+import { useActivePromptHeader } from "../features/workspace";
 
 describe("WorkspaceLayout", () => {
   it("renders the signed-in user's name, role badge, and the tree for their role", () => {
@@ -38,5 +51,38 @@ describe("WorkspaceLayout", () => {
     expect(screen.getByText("maintainer")).toBeInTheDocument();
     expect(screen.getByText("tree for maintainer")).toBeInTheDocument();
     expect(screen.getByText("content")).toBeInTheDocument();
+  });
+
+  it("falls back to the generic title when no prompt is active", () => {
+    render(<WorkspaceLayout>{<p>content</p>}</WorkspaceLayout>);
+    expect(screen.getByText("Prompt Evaluation Workbench")).toBeInTheDocument();
+  });
+
+  it("swaps the generic title for the active prompt's project/name/tags/version once a page publishes them", async () => {
+    function PublishingChild() {
+      const { setHeader } = useActivePromptHeader();
+      useEffect(() => {
+        setHeader({
+          projectName: "Support automation",
+          promptName: "Ticket triage",
+          tags: ["triage", "prod"],
+          latestVersion: 2,
+          isDirty: false,
+          archived: false,
+          canEdit: true,
+          canSettings: true,
+          onRename: () => undefined,
+          onToggleArchive: () => undefined,
+          onRunOnce: () => undefined,
+        });
+      }, [setHeader]);
+      return <p>content</p>;
+    }
+    render(<WorkspaceLayout>{<PublishingChild />}</WorkspaceLayout>);
+    expect(await screen.findByText("Project: Support automation")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Ticket triage")).toBeInTheDocument();
+    expect(screen.getByText("triage")).toBeInTheDocument();
+    expect(screen.getByText("v2")).toBeInTheDocument();
+    expect(screen.queryByText("Prompt Evaluation Workbench")).not.toBeInTheDocument();
   });
 });
