@@ -14,8 +14,6 @@ export function RoleBadge({ role }: { role: Role }) {
         border: `0.5px solid ${color}55`,
         borderRadius: 4,
         padding: "1px 6px",
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
       }}
     >
       {role}

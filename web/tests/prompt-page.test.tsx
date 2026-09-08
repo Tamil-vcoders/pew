@@ -57,6 +57,7 @@ import { useAuth } from "../features/auth/useAuth";
 import { useVersionsStream } from "../features/editor";
 import { useDatasetStream } from "../features/dataset";
 import { useCycle } from "../features/cycle";
+import { validateText } from "../features/validation";
 import PromptPage from "../app/(workspace)/p/[promptId]/page";
 import type { Version } from "../shared/types";
 
@@ -158,8 +159,15 @@ describe("PromptPage", () => {
 
   it("renders the SuggestionsPanel with the current draft once the Suggestions tab is opened", () => {
     setup("contributor");
-    fireEvent.click(screen.getByRole("button", { name: "Suggestions" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Suggestions/ }));
     expect(screen.getByTestId("suggestions-panel")).toHaveTextContent("Summarize the ticket.");
+  });
+
+  it("badges the Suggestions tab with the number of failing static-validation rules for the draft", () => {
+    setup("contributor");
+    const failing = validateText("Summarize the ticket.").filter((r) => r.status === "fail").length;
+    expect(failing).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /^Suggestions/ })).toHaveTextContent(`Suggestions${failing}`);
   });
 
   it("renders the Dataset tab by default with the case count from useDatasetStream", () => {

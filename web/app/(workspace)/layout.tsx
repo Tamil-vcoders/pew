@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Archive, ArchiveRestore, LogOut, Menu, Play, Settings, X } from "lucide-react";
+import { Archive, ArchiveRestore, GitBranch, LogOut, Menu, Play, Settings, X } from "lucide-react";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { useAuth } from "@/features/auth/useAuth";
 import { CycleStatusChip } from "@/features/cycle";
@@ -125,6 +125,7 @@ function HeaderActivePromptActions() {
           padding: "4px 8px",
         }}
       >
+        <GitBranch size={11} />
         v{header.latestVersion}
         {header.isDirty ? " (unsaved)" : ""}
       </div>
@@ -167,7 +168,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   return (
     <AuthGuard>
       <ActivePromptHeaderProvider>
-        <div style={{ background: COLORS.bg, color: COLORS.text, minHeight: "100vh" }}>
+        <div style={{ background: COLORS.bg, color: COLORS.text, height: "100vh", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
           <div
             style={{
               padding: "12px 20px",
@@ -235,7 +236,14 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
             style={{
               display: "grid",
               gridTemplateColumns: isNarrow ? "1fr" : "230px 1fr",
-              minHeight: "calc(100vh - 53px)",
+              gridTemplateRows: isNarrow && showTree ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
+              // The shell is a fixed 100vh frame (docs/prototype.jsx:1172): the header stays
+              // put, the tree keeps its "show archived" footer pinned to the bottom, and the
+              // page content scrolls inside its own column. Both this grid and the outer one
+              // use minmax(0, 1fr) rows so the heights are definite in every engine (WebKit
+              // does not reliably shrink a flex child below its content height).
+              minHeight: 0,
+              height: "100%",
             }}
           >
             {showTree && (
@@ -243,12 +251,17 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
                 style={{
                   borderRight: isNarrow ? "none" : `0.5px solid ${COLORS.border}`,
                   borderBottom: isNarrow ? `0.5px solid ${COLORS.border}` : "none",
+                  maxHeight: isNarrow ? "40vh" : undefined,
+                  minHeight: 0,
+                  height: isNarrow ? undefined : "100%",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
                 <ProjectTree role={profile?.role ?? null} activePromptId={activePromptId} />
               </div>
             )}
-            <div style={{ padding: 18 }}>{children}</div>
+            <div style={{ minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden" }}>{children}</div>
           </div>
         </div>
       </ActivePromptHeaderProvider>

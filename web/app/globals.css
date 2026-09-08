@@ -26,3 +26,38 @@ body {
 .pew-mono {
   font-family: var(--font-mono);
 }
+
+/* Prompt page columns (docs/prototype.jsx:1172): editor + validation on the left, work tabs on
+   the right, split 1fr / 1.15fr with a full-height rule between them. Stacks below 1100px so
+   the setup grid and estimate table keep enough room; a CSS media query (not a JS hook) so
+   the first paint is already correct. */
+.pew-prompt-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100%;
+}
+.pew-prompt-col {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+@media (min-width: 1100px) {
+  /* Side by side, each column scrolls on its own: the grid fills the shell's content cell
+     exactly (height 100%, one minmax(0,1fr) row) so the columns, not the cell, overflow. */
+  .pew-prompt-grid {
+    grid-template-columns: 1fr 1.15fr;
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+  .pew-prompt-col {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .pew-prompt-col-left {
+    border-right: 0.5px solid #2E323C;
+  }
+}

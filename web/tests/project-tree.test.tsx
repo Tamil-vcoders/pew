@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 const mockProjects = [
@@ -106,12 +110,18 @@ describe("ProjectTree", () => {
 
   it("shows the per-project/per-prompt scoping caption at the bottom", () => {
     render(<ProjectTree role="contributor" activePromptId={null} />);
-    expect(screen.getByText(/Setup, models and budgets are per-project/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Setup, models and budgets are per-project. Scores are per-prompt — private datasets are not comparable across prompts.",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("marks the currently open prompt with a 'Currently open' indicator, and no other prompt", () => {
+  it("marks the currently open prompt's row with a 'Currently open' indicator, and no other prompt", () => {
     render(<ProjectTree role="contributor" activePromptId="p1" />);
-    expect(screen.getByTitle("Currently open")).toBeInTheDocument();
+    const row = screen.getByTitle("Currently open");
+    expect(row).toHaveAttribute("href", "/p/p1?project=j1");
+    expect(row).toHaveAttribute("aria-current", "page");
     // "Old draft" (p2) is archived and hidden by default, so only p1's row can carry the dot.
     expect(screen.getAllByTitle("Currently open")).toHaveLength(1);
   });
