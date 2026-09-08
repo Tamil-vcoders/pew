@@ -127,6 +127,41 @@ async def test_estimate_returns_execution_and_grading_rows_scaled_by_dataset_siz
     assert body["totalCost"] > 0
 
 
+async def test_estimate_with_n_sug_adds_a_suggestions_row_for_the_setup_tabs_cycle_preview():
+    """The Setup tab's "Estimated spend" section previews a full cycle iteration (Execution +
+    Model grading + Suggestions), not just a one-off "Run once" (which never drafts
+    suggestions) -- passing n_sug opts into that 3-row estimate."""
+    await seed_model_registry()
+    admin = _bootstrap("asha@acme.dev")
+    project_id, prompt_id = _make_project_and_prompt(admin["id_token"])
+    _add_cases(project_id, prompt_id, admin["id_token"], n=4)
+
+    resp = client.get(
+        f"/projects/{project_id}/prompts/{prompt_id}/runs/estimate",
+        params={"text": "Summarize: {{ticket_text}}", "n_sug": 2}, headers=auth_headers(admin["id_token"]),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["nCases"] == 4
+    assert [r["stage"] for r in body["rows"]] == ["Execution", "Model grading", "Suggestions"]
+    assert body["totalCost"] > 0
+
+
+async def test_estimate_without_n_sug_still_omits_the_suggestions_row():
+    """Regression guard: the default ("Run once") shape must stay exactly as it was before
+    n_sug existed -- RunTab's manual preview never drafts suggestions."""
+    await seed_model_registry()
+    admin = _bootstrap("asha@acme.dev")
+    project_id, prompt_id = _make_project_and_prompt(admin["id_token"])
+    _add_cases(project_id, prompt_id, admin["id_token"], n=1)
+
+    resp = client.get(
+        f"/projects/{project_id}/prompts/{prompt_id}/runs/estimate",
+        params={"text": "Summarize: {{ticket_text}}"}, headers=auth_headers(admin["id_token"]),
+    )
+    assert [r["stage"] for r in resp.json()["rows"]] == ["Execution", "Model grading"]
+
+
 async def test_human_grade_write_changes_what_blend_run_computes_for_that_case():
     """PUT human-grade persists humanScore; the blended composite is a read-time
     computation (blend_run) over the case docs, never re-stored on the run doc."""

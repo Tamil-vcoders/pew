@@ -21,6 +21,18 @@ describe("runsApi", () => {
     expect(apiFetch).toHaveBeenCalledWith("/projects/j1/prompts/p1/runs/estimate?text=hello+world");
   });
 
+  it("estimate omits n_sug by default, matching RunTab's one-off preview (never drafts suggestions)", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ rows: [], totalIn: 0, totalOut: 0, totalCost: 0, nCases: 0 });
+    await runsApi.estimate("j1", "p1", "hello world");
+    expect(vi.mocked(apiFetch).mock.calls[0][0]).not.toContain("n_sug");
+  });
+
+  it("estimate passes n_sug when given, opting into the Setup tab's 3-row cycle preview", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ rows: [], totalIn: 0, totalOut: 0, totalCost: 0, nCases: 0 });
+    await runsApi.estimate("j1", "p1", "hello world", 2);
+    expect(apiFetch).toHaveBeenCalledWith("/projects/j1/prompts/p1/runs/estimate?text=hello+world&n_sug=2");
+  });
+
   it("setHumanGrade PUTs the score to the case's human-grade endpoint", async () => {
     vi.mocked(apiFetch).mockResolvedValue(undefined);
     await runsApi.setHumanGrade("j1", "p1", "r1", "c1", 8.5);

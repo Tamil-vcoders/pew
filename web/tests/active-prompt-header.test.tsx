@@ -18,6 +18,7 @@ const SAMPLE: ActivePromptHeaderData = {
   canEdit: true,
   canSettings: true,
   onRename: vi.fn(),
+  onTagsChange: vi.fn(),
   onToggleArchive: vi.fn(),
   onRunOnce: vi.fn(),
 };

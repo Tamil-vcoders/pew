@@ -2,6 +2,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Settings as SettingsIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
@@ -50,6 +51,16 @@ function useActivePromptHeaderSync({
     }
   }
 
+  async function onTagsChange(tags: string[]) {
+    try {
+      setActionError(null);
+      await workspaceApi.updatePrompt(projectId, prompt.id, { tags });
+    } catch (err) {
+      console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to update tags.");
+    }
+  }
+
   async function onToggleArchive() {
     try {
       setActionError(null);
@@ -71,6 +82,7 @@ function useActivePromptHeaderSync({
       canEdit: can.edit,
       canSettings: can.settings,
       onRename,
+      onTagsChange,
       onToggleArchive,
       onRunOnce,
     });
@@ -156,7 +168,12 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
       <VersionHistory versions={versions} currentVersionN={prompt.latestVersion} />
 
       <div style={{ display: "flex", gap: 14, borderBottom: `0.5px solid ${COLORS.border}` }}>
-        <Tab active={tab === "setup"} onClick={() => setTab("setup")} dot={cycleIsHere && cycle?.status === "ended"}>
+        <Tab
+          active={tab === "setup"}
+          onClick={() => setTab("setup")}
+          dot={cycleIsHere && cycle?.status === "ended"}
+          icon={<SettingsIcon size={13} />}
+        >
           Setup
         </Tab>
         <Tab active={tab === "dataset"} onClick={() => setTab("dataset")} count={cases.length} dot={cycleIsHere && cycle?.stage === "dataset"}>

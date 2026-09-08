@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { FileText, Folder, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { capabilitiesFor, type Role } from "@/shared/rbac/permissions";
 import { COLORS } from "@/shared/ui/tokens";
@@ -70,6 +70,7 @@ function ProjectRow({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 4px" }}>
+        <Folder size={12} color={COLORS.faint} />
         {can.settings ? (
           <input
             value={nameDraft}
@@ -109,23 +110,35 @@ function ProjectRow({
           key={prompt.id}
           href={`/p/${prompt.id}?project=${project.id}`}
           style={{
-            display: "block",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 6,
             padding: "7px 8px 7px 20px",
             background: prompt.id === activePromptId ? COLORS.accentDim : "transparent",
             color: prompt.archived ? COLORS.faint : COLORS.text,
             textDecoration: prompt.archived ? "line-through" : "none",
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 500 }}>{prompt.name}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
-            <span style={{ fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace", fontSize: 9.5, color: COLORS.faint }}>
-              v{prompt.latestVersion}
-            </span>
-            {prompt.tags.slice(0, 3).map((tag) => (
-              <span key={tag} style={{ fontSize: 9.5, color: COLORS.muted, background: COLORS.surface2, borderRadius: 3, padding: "0 4px" }}>
-                {tag}
+          <FileText size={12} color={COLORS.faint} style={{ marginTop: 2, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 500 }}>{prompt.name}</span>
+            {prompt.id === activePromptId && (
+              <span
+                title="Currently open"
+                aria-label="Currently open"
+                style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: COLORS.accent, marginLeft: 6 }}
+              />
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace", fontSize: 9.5, color: COLORS.faint }}>
+                v{prompt.latestVersion}
               </span>
-            ))}
+              {prompt.tags.slice(0, 3).map((tag) => (
+                <span key={tag} style={{ fontSize: 9.5, color: COLORS.muted, background: COLORS.surface2, borderRadius: 3, padding: "0 4px" }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
         </Link>
       ))}
@@ -197,6 +210,9 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
         />
         show archived
       </label>
+      <div style={{ fontSize: 10, color: COLORS.faint, lineHeight: 1.5 }}>
+        Setup, models and budgets are per-project. Scores are per-prompt — private datasets.
+      </div>
     </div>
   );
 }

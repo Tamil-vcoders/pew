@@ -103,4 +103,21 @@ describe("ProjectTree", () => {
     fireEvent.click(screen.getByTitle("New project"));
     expect(await screen.findByText("Project name already exists")).toBeInTheDocument();
   });
+
+  it("shows the per-project/per-prompt scoping caption at the bottom", () => {
+    render(<ProjectTree role="contributor" activePromptId={null} />);
+    expect(screen.getByText(/Setup, models and budgets are per-project/)).toBeInTheDocument();
+  });
+
+  it("marks the currently open prompt with a 'Currently open' indicator, and no other prompt", () => {
+    render(<ProjectTree role="contributor" activePromptId="p1" />);
+    expect(screen.getByTitle("Currently open")).toBeInTheDocument();
+    // "Old draft" (p2) is archived and hidden by default, so only p1's row can carry the dot.
+    expect(screen.getAllByTitle("Currently open")).toHaveLength(1);
+  });
+
+  it("shows no 'Currently open' indicator when no prompt is active", () => {
+    render(<ProjectTree role="contributor" activePromptId={null} />);
+    expect(screen.queryByTitle("Currently open")).not.toBeInTheDocument();
+  });
 });

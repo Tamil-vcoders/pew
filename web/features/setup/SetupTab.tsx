@@ -3,8 +3,10 @@
 // cycle-ended card, cycle log).
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, Lock, Zap } from "lucide-react";
 import { Btn, COLORS } from "@/shared/ui";
-import { EstimateTable, runsApi } from "@/features/runs";
+import { EstimateTable, fmt$, fmtK, runsApi } from "@/features/runs";
 import { CycleEndedCard, CycleLog, cycleApi } from "@/features/cycle";
 import { workspaceApi } from "@/features/workspace";
 import { settingsApi } from "@/features/settings-global";
@@ -75,14 +77,16 @@ export function SetupTab({
 
   useEffect(() => {
     let cancelled = false;
+    // nSug opts into the 3-row cycle-iteration estimate (adds Suggestions) -- this section
+    // previews what a real cycle iteration costs, not a one-off "Run once".
     runsApi
-      .estimate(projectId, promptId, draft)
+      .estimate(projectId, promptId, draft, cfg.nSug)
       .then((est) => !cancelled && setEstimate(est))
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [projectId, promptId, draft]);
+  }, [projectId, promptId, draft, cfg.nSug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,7 +152,7 @@ export function SetupTab({
 
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.muted, marginBottom: 8 }}>
-          Cycle defaults — this project
+          Cycle defaults — {project.name}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Field label="Target score">
@@ -185,6 +189,7 @@ export function SetupTab({
             type="checkbox" checked={cfg.auto} disabled={locked}
             onChange={(e) => commitCfg({ ...cfg, auto: e.target.checked })}
           />
+          <Zap size={12} />
           Auto mode — no pauses: dataset auto-approved, manual grading skipped, top-ranked suggestion applied, stops if the score goes flat
         </label>
       </div>
@@ -220,9 +225,12 @@ export function SetupTab({
       </div>
 
       <div>
-        <div style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.muted, marginBottom: 8 }}>Models per stage</div>
+        <div style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.muted, marginBottom: 8 }}>
+          Models per stage — {project.name}
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, background: COLORS.surface, fontSize: 12 }}>
+            <Lock size={12} color={COLORS.faint} />
             <span style={{ flex: 1 }}>Prompt validation</span>
             <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: COLORS.faint }}>static · no model · $0</span>
           </div>
@@ -245,17 +253,34 @@ export function SetupTab({
             </div>
           ))}
         </div>
+        <div style={{ fontSize: 11, color: COLORS.faint, marginTop: 6 }}>
+          No personal API key saved — using org credentials (mock). Add yours in{" "}
+          <Link href="/settings" style={{ color: COLORS.accent }}>
+            Global settings
+          </Link>
+          .
+        </div>
       </div>
 
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.muted, marginBottom: 8 }}>
           Estimated spend for &quot;{promptName}&quot; ({cases.length} cases · planning figures, not quotes)
         </div>
-        {estimate ? <EstimateTable estimate={estimate} /> : <div style={{ fontSize: 11.5, color: COLORS.faint }}>Loading estimate…</div>}
+        {estimate ? (
+          <>
+            <EstimateTable estimate={estimate} />
+            <div style={{ fontSize: 11, color: COLORS.faint, marginTop: 8 }}>
+              Full cycle ({cfg.maxIter} iterations): ~{fmt$(cfg.maxIter * estimate.totalCost)} ·{" "}
+              {fmtK(cfg.maxIter * (estimate.totalIn + estimate.totalOut))} tokens
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 11.5, color: COLORS.faint }}>Loading estimate…</div>
+        )}
         {iterationsAffordable != null && iterationsAffordable < cfg.maxIter && (
-          <div style={{ fontSize: 11.5, color: COLORS.mid, marginTop: 8 }}>
-            Budget ${cfg.budget.toFixed(2)} covers only ~{iterationsAffordable} of {cfg.maxIter} configured iterations
-            (execution + grading only — suggestion-drafting cost adds a small amount per iteration on top).
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.mid, marginTop: 8 }}>
+            <AlertTriangle size={12} />
+            Budget ${cfg.budget.toFixed(2)} covers only ~{iterationsAffordable} of {cfg.maxIter} configured iterations.
           </div>
         )}
       </div>
