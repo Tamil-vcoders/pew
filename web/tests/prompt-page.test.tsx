@@ -15,6 +15,8 @@ vi.mock("../features/workspace", () => ({
   useProjectDoc: vi.fn(),
   workspaceApi: { updatePrompt: vi.fn() },
   useActivePromptHeader: () => ({ header: null, setHeader: setHeaderMock }),
+  rememberLastPrompt: vi.fn(),
+  forgetLastPrompt: vi.fn(),
 }));
 vi.mock("../features/auth/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("../features/editor", () => ({
@@ -52,7 +54,7 @@ vi.mock("../features/cycle", () => ({
 }));
 
 import { useSearchParams } from "next/navigation";
-import { usePromptDoc, useProjectDoc, workspaceApi } from "../features/workspace";
+import { forgetLastPrompt, rememberLastPrompt, usePromptDoc, useProjectDoc, workspaceApi } from "../features/workspace";
 import { useAuth } from "../features/auth/useAuth";
 import { useVersionsStream } from "../features/editor";
 import { useDatasetStream } from "../features/dataset";
@@ -92,6 +94,8 @@ beforeEach(() => {
   vi.mocked(workspaceApi.updatePrompt).mockReset();
   vi.mocked(workspaceApi.updatePrompt).mockResolvedValue({} as never);
   setHeaderMock.mockReset();
+  vi.mocked(rememberLastPrompt).mockReset();
+  vi.mocked(forgetLastPrompt).mockReset();
   vi.mocked(useProjectDoc).mockReturnValue({ data: null, error: null });
   vi.mocked(useDatasetStream).mockReturnValue({ data: [], error: null });
   vi.mocked(useCycle).mockReturnValue({ data: null, error: null });
@@ -170,9 +174,35 @@ describe("PromptPage", () => {
     expect(screen.getByRole("button", { name: /^Suggestions/ })).toHaveTextContent(`Suggestions${failing}`);
   });
 
-  it("renders the Dataset tab by default with the case count from useDatasetStream", () => {
+  it("opens on the Setup tab by default", () => {
     setup("contributor");
+    expect(screen.getByRole("button", { name: "Setup", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Dataset/, pressed: false })).toBeInTheDocument();
+    expect(screen.queryByTestId("dataset-tab")).not.toBeInTheDocument();
+  });
+
+  it("renders the Dataset tab with the case count from useDatasetStream once opened", () => {
+    setup("contributor");
+    fireEvent.click(screen.getByRole("button", { name: /^Dataset/ }));
     expect(screen.getByTestId("dataset-tab")).toHaveTextContent("0 case(s)");
+  });
+
+  it("remembers the opened prompt for this user so the dashboard can return to it", () => {
+    setup("contributor");
+    expect(rememberLastPrompt).toHaveBeenCalledWith("u1", "j1", "p1");
+  });
+
+  it("forgets the remembered prompt when it fails to load (deleted or forbidden)", () => {
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams("project=j1") as never);
+    vi.mocked(useAuth).mockReturnValue({
+      firebaseUser: null, loading: false, signOut: vi.fn(), refreshProfile: vi.fn(),
+      profile: { uid: "u1", email: "a@b.com", name: "A", role: "contributor" as never, createdAt: "x" },
+    });
+    vi.mocked(usePromptDoc).mockReturnValue({ data: null, error: new Error("Not found") });
+    vi.mocked(useVersionsStream).mockReturnValue({ data: [], error: null });
+    render(<PromptPage params={{ promptId: "p1" }} />);
+    expect(forgetLastPrompt).toHaveBeenCalledWith("u1");
+    expect(rememberLastPrompt).not.toHaveBeenCalled();
   });
 
   it("syncs the draft to the real version text once versions finish loading async (regression)", () => {

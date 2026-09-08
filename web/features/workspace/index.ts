@@ -9,4 +9,5 @@ export { usePromptsStream } from "./usePromptsStream";
 export { useProjectDoc } from "./useProjectDoc";
 export { useProjectsStream } from "./useProjectsStream";
 export { workspaceApi } from "./workspaceApi";
+export { forgetLastPrompt, readLastPrompt, rememberLastPrompt, type LastPrompt } from "./lastPrompt";
 

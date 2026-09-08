@@ -23,7 +23,7 @@ export function Tab({
   return (
     <button
       onClick={onClick}
-      aria-selected={active}
+      aria-pressed={active}
       style={{
         background: "transparent",
         border: "none",

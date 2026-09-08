@@ -6,7 +6,7 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/useAuth";
 import { capabilitiesFor, type Capabilities } from "@/shared/rbac/permissions";
-import { useActivePromptHeader, useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
+import { forgetLastPrompt, rememberLastPrompt, useActivePromptHeader, useProjectDoc, usePromptDoc, workspaceApi } from "@/features/workspace";
 import { PromptEditor, VersionHistory, editorApi, useVersionsStream } from "@/features/editor";
 import { validateText } from "@/features/validation";
 import { SuggestionsPanel } from "@/features/suggestions";
@@ -103,7 +103,7 @@ function PromptWorkspace({ prompt, projectId, can }: { prompt: Prompt; projectId
   const currentVersionText = currentVersion?.text ?? "";
 
   const [draft, setDraft] = useState(currentVersionText);
-  const [tab, setTab] = useState<WorkTab>("dataset");
+  const [tab, setTab] = useState<WorkTab>("setup");
   const [runId, setRunId] = useState<string | null>(null);
   const lastSyncedVersion = useRef<number | null>(null);
   useEffect(() => {
@@ -285,6 +285,15 @@ export default function PromptPage({ params }: { params: { promptId: string } })
   const { profile } = useAuth();
   const can = capabilitiesFor(profile?.role ?? null);
   const { data: prompt, error: promptError } = usePromptDoc(projectId, params.promptId);
+
+  // Remember this as the user's last opened prompt so "/" (the dashboard route) returns here;
+  // drop the memory if it stops loading (deleted, or access revoked) so "/" doesn't loop on
+  // an error page.
+  useEffect(() => {
+    if (!profile) return;
+    if (promptError) forgetLastPrompt(profile.uid);
+    else if (prompt) rememberLastPrompt(profile.uid, projectId, prompt.id);
+  }, [profile, projectId, prompt, promptError]);
 
   if (promptError) {
     return <p style={{ padding: 18, color: COLORS.bad }}>{promptError.message}</p>;
