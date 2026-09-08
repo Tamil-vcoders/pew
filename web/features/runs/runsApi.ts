@@ -10,8 +10,12 @@ export const runsApi = {
     });
   },
 
-  async estimate(projectId: string, promptId: string, text: string): Promise<Estimate> {
+  // nSug opts into the 3-row cycle-iteration estimate (adds a Suggestions row) for the Setup
+  // tab's "Estimated spend" preview. Omit it (RunTab's one-off "Run once" preview) to get the
+  // 2-row Execution + Model grading estimate -- a plain run never drafts suggestions.
+  async estimate(projectId: string, promptId: string, text: string, nSug?: number): Promise<Estimate> {
     const params = new URLSearchParams({ text });
+    if (nSug != null) params.set("n_sug", String(nSug));
     return apiFetch<Estimate>(`/projects/${projectId}/prompts/${promptId}/runs/estimate?${params.toString()}`);
   },
 

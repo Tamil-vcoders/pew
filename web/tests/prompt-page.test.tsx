@@ -139,6 +139,13 @@ describe("PromptPage", () => {
     expect(workspaceApi.updatePrompt).toHaveBeenCalledWith("j1", "p1", { name: "Renamed prompt" });
   });
 
+  it("its onTagsChange calls updatePrompt with the new tag list", () => {
+    setup("contributor");
+    const lastCall = setHeaderMock.mock.calls.at(-1)?.[0];
+    lastCall.onTagsChange(["draft", "urgent"]);
+    expect(workspaceApi.updatePrompt).toHaveBeenCalledWith("j1", "p1", { tags: ["draft", "urgent"] });
+  });
+
   it("passes the current version's text into the editor as the initial draft", () => {
     setup("contributor");
     expect(screen.getByTestId("prompt-editor")).toHaveTextContent("Summarize the ticket.");

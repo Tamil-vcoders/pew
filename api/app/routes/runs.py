@@ -1,5 +1,5 @@
 # api/app/routes/runs.py
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.adapters import inline_tasks
@@ -15,7 +15,7 @@ from app.deps import (
     get_version_repo,
     require,
 )
-from app.domain.estimate import Estimate, build_estimate, run_estimate_rows
+from app.domain.estimate import Estimate, build_estimate, cycle_estimate_rows, run_estimate_rows
 from app.domain.models import User
 from app.domain.rendering import render
 from app.ports.llm import LLMProvider
@@ -107,6 +107,7 @@ async def get_estimate(
     project_id: str,
     prompt_id: str,
     text: str,
+    n_sug: int | None = Query(default=None, ge=1),
     projects: ProjectRepo = Depends(get_project_repo),
     dataset: DatasetRepo = Depends(get_dataset_repo),
     registry: ModelRegistryRepo = Depends(get_model_registry_repo),
@@ -123,7 +124,14 @@ async def get_estimate(
     for case in cases:
         exec_tokens_in += await llm.count_tokens(render(text, case.input), exec_model)
 
-    rows = run_estimate_rows(project.cfg.models, len(cases), exec_tokens_in=exec_tokens_in)
+    # n_sug opts into the 3-row cycle-iteration estimate (adds Suggestions) for the Setup
+    # tab's "Estimated spend" preview -- the default 2-row shape (Execution + Model grading)
+    # stays exactly as it was for RunTab's "Run once" preview, which never drafts suggestions.
+    rows = (
+        cycle_estimate_rows(project.cfg.models, len(cases), n_sug, exec_tokens_in=exec_tokens_in)
+        if n_sug is not None
+        else run_estimate_rows(project.cfg.models, len(cases), exec_tokens_in=exec_tokens_in)
+    )
     return _serialize_estimate(build_estimate(rows, rates), len(cases))
 
 

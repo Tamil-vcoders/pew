@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Archive, ArchiveRestore, LogOut, Menu, Play, Settings } from "lucide-react";
+import { Archive, ArchiveRestore, LogOut, Menu, Play, Settings, X } from "lucide-react";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { useAuth } from "@/features/auth/useAuth";
 import { CycleStatusChip } from "@/features/cycle";
@@ -38,12 +38,15 @@ function HeaderTitle() {
         spellCheck={false}
         style={{ fontSize: 15, fontWeight: 600, background: "transparent", border: "none", color: COLORS.text, padding: 0 }}
       />
-      {header.tags.length > 0 && (
-        <div style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
+      {(header.tags.length > 0 || header.canEdit) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
           {header.tags.map((tag) => (
             <span
               key={tag}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
                 fontSize: 10,
                 color: COLORS.muted,
@@ -53,11 +56,53 @@ function HeaderTitle() {
               }}
             >
               {tag}
+              {header.canEdit && (
+                <button
+                  onClick={() => header.onTagsChange(header.tags.filter((t) => t !== tag))}
+                  aria-label={`Remove tag ${tag}`}
+                  style={{ display: "flex", background: "transparent", border: "none", color: COLORS.faint, cursor: "pointer", padding: 0 }}
+                >
+                  <X size={9} />
+                </button>
+              )}
             </span>
           ))}
+          {header.canEdit && <NewTagInput tags={header.tags} onTagsChange={header.onTagsChange} />}
         </div>
       )}
     </div>
+  );
+}
+
+function NewTagInput({ tags, onTagsChange }: { tags: string[]; onTagsChange: (tags: string[]) => void }) {
+  const [draft, setDraft] = useState("");
+
+  function commit() {
+    const tag = draft.trim();
+    if (tag && !tags.includes(tag)) onTagsChange([...tags, tag]);
+    setDraft("");
+  }
+
+  return (
+    <input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+      }}
+      onBlur={commit}
+      placeholder="+ tag"
+      spellCheck={false}
+      style={{
+        width: 48,
+        fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+        fontSize: 10,
+        color: COLORS.faint,
+        background: "transparent",
+        border: "none",
+        padding: "2px 0",
+      }}
+    />
   );
 }
 

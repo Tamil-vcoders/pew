@@ -3,6 +3,7 @@
 // Ports docs/prototype.jsx:1112-1119. Rendered once in web/app/(workspace)/layout.tsx.
 "use client";
 import { useState } from "react";
+import { Activity } from "lucide-react";
 import { useAuth } from "@/features/auth/useAuth";
 import { usePromptDoc } from "@/features/workspace";
 import { Btn, COLORS } from "@/shared/ui";
@@ -38,6 +39,7 @@ export function CycleStatusChip() {
         border: `0.5px solid ${COLORS.border}`, borderRadius: 6, padding: "4px 8px",
       }}
     >
+      <Activity size={12} color={COLORS.accent} />
       <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: COLORS.muted }}>
         {prompt?.name ?? "…"} · iter {cycle.iteration}/{cycle.configSnapshot.maxIter} · $
         {cycle.spent.toFixed(2)}/${cycle.configSnapshot.budget.toFixed(2)}

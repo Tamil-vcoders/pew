@@ -2,8 +2,8 @@
 import { COLORS } from "@/shared/ui";
 import type { Estimate } from "@/shared/types";
 
-const fmt$ = (v: number) => "$" + v.toFixed(3);
-const fmtK = (v: number) => (v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v));
+export const fmt$ = (v: number) => "$" + v.toFixed(3);
+export const fmtK = (v: number) => (v >= 1000 ? (v / 1000).toFixed(1) + "k" : String(v));
 const GRID = "1.4fr 1fr .8fr .8fr .7fr";
 
 export function EstimateTable({ estimate }: { estimate: Estimate }) {

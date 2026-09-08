@@ -20,6 +20,7 @@ export interface ActivePromptHeaderData {
   canEdit: boolean;
   canSettings: boolean;
   onRename: (name: string) => void;
+  onTagsChange: (tags: string[]) => void;
   onToggleArchive: () => void;
   onRunOnce: () => void;
 }

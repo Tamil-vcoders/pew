@@ -9,22 +9,24 @@ export function Tab({
   children,
   count,
   dot,
+  icon,
 }: {
   active: boolean;
   onClick: () => void;
   children: ReactNode;
   count?: number;
   dot?: boolean;
+  icon?: ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       style={{
-        background: "transparent",
-        border: "none",
-        borderBottom: active ? `2px solid ${COLORS.accent}` : "2px solid transparent",
+        background: active ? COLORS.accentDim : "transparent",
+        border: `0.5px solid ${active ? COLORS.accent : "transparent"}`,
+        borderRadius: 6,
         color: active ? COLORS.text : COLORS.muted,
-        padding: "10px 4px",
+        padding: "6px 10px",
         fontSize: 13,
         fontWeight: 500,
         cursor: "pointer",
@@ -33,6 +35,7 @@ export function Tab({
         gap: 5,
       }}
     >
+      {icon}
       {children}
       {dot && <span style={{ width: 7, height: 7, borderRadius: 4, background: COLORS.accent }} />}
       {count != null && (
