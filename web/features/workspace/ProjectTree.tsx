@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Folder, Plus, Search } from "lucide-react";
+import { FileText, Folder, FolderOpen, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { capabilitiesFor, type Role } from "@/shared/rbac/permissions";
 import { COLORS } from "@/shared/ui/tokens";
@@ -10,6 +10,16 @@ import { useProjectsStream } from "./useProjectsStream";
 import { usePromptsStream } from "./usePromptsStream";
 import { workspaceApi } from "./workspaceApi";
 import type { Project } from "@/shared/types";
+
+const searchInputStyle = {
+  background: "#0F1116",
+  color: COLORS.text,
+  border: `0.5px solid ${COLORS.border}`,
+  borderRadius: 6,
+  padding: "5px 6px 5px 24px",
+  fontSize: 11.5,
+  width: "100%",
+} as const;
 
 function ProjectRow({
   project,
@@ -70,7 +80,7 @@ function ProjectRow({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 4px" }}>
-        <Folder size={12} color={COLORS.accent} />
+        <FolderOpen size={12} color={COLORS.accent} />
         {can.settings ? (
           <input
             value={nameDraft}
@@ -78,10 +88,12 @@ function ProjectRow({
             onBlur={commitRename}
             spellCheck={false}
             aria-label="Project name"
-            style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}
+            // Reads as a plain group heading (docs/prototype.jsx:22 .pew-proj-input): the
+            // global input chrome (border/background) would box every project name.
+            style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase", letterSpacing: ".04em", background: "transparent", border: "none", outline: "none", padding: 0 }}
           />
         ) : (
-          <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase" }}>
+          <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: COLORS.muted, textTransform: "uppercase", letterSpacing: ".04em" }}>
             {project.name}
           </span>
         )}
@@ -109,42 +121,35 @@ function ProjectRow({
         <Link
           key={prompt.id}
           href={`/p/${prompt.id}?project=${project.id}`}
+          // The open prompt is marked by its bordered card (docs/prototype.jsx:1215-1219),
+          // not a dot; title/aria-current carry the same fact for a11y and tests.
+          title={prompt.id === activePromptId ? "Currently open" : undefined}
+          aria-current={prompt.id === activePromptId ? "page" : undefined}
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 6,
-            margin: "0 4px",
-            padding: "7px 8px 7px 16px",
-            borderRadius: 8,
+            display: "block",
+            padding: "7px 8px 7px 20px",
+            borderRadius: 7,
             background: prompt.id === activePromptId ? COLORS.accentDim : "transparent",
+            border: `0.5px solid ${prompt.id === activePromptId ? COLORS.accent + "55" : "transparent"}`,
             color: prompt.archived ? COLORS.faint : COLORS.text,
             textDecoration: prompt.archived ? "line-through" : "none",
           }}
         >
-          <FileText
-            size={12}
-            color={prompt.id === activePromptId ? COLORS.accent : COLORS.faint}
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 500 }}>{prompt.name}</span>
-            {prompt.id === activePromptId && (
-              <span
-                title="Currently open"
-                aria-label="Currently open"
-                style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: COLORS.accent, marginLeft: 6 }}
-              />
-            )}
-            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
-              <span style={{ fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace", fontSize: 9.5, color: COLORS.faint }}>
-                v{prompt.latestVersion}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <FileText size={11} color={prompt.id === activePromptId ? COLORS.accent : COLORS.faint} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {prompt.name}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, marginLeft: 17, flexWrap: "wrap" }}>
+            <span className="pew-mono" style={{ fontSize: 9.5, color: COLORS.faint }}>
+              v{prompt.latestVersion}
+            </span>
+            {prompt.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="pew-mono" style={{ fontSize: 9.5, color: COLORS.muted, background: COLORS.surface2, borderRadius: 3, padding: "0 4px" }}>
+                {tag}
               </span>
-              {prompt.tags.slice(0, 3).map((tag) => (
-                <span key={tag} style={{ fontSize: 9.5, color: COLORS.muted, background: COLORS.surface2, borderRadius: 3, padding: "0 4px" }}>
-                  {tag}
-                </span>
-              ))}
-            </div>
+            ))}
           </div>
         </Link>
       ))}
@@ -170,20 +175,23 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: "100%" }}>
+    // flex: 1 + minHeight: 0 fill the shell's sidebar cell so the prompt list scrolls and the
+    // "show archived" footer stays pinned to the bottom (docs/prototype.jsx:1174).
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: "100%", flex: 1, minHeight: 0 }}>
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ position: "relative", flex: 1 }}>
           <Search
             size={12}
             color={COLORS.faint}
             style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            aria-hidden
           />
           <input
             placeholder="name or tag…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search prompts by name or tag"
-            style={{ width: "100%", paddingLeft: 24 }}
+            style={searchInputStyle}
           />
         </div>
         {can.settings && (
@@ -202,7 +210,7 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
       {projects.length === 0 && !projectsError && (
         <div style={{ fontSize: 10.5, color: COLORS.faint }}>No projects yet.</div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflow: "auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minHeight: 0, overflow: "auto" }}>
         {projects.map((project) => (
           <ProjectRow
             key={project.id}
@@ -223,7 +231,7 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
         />
         show archived
       </label>
-      <div style={{ fontSize: 10, color: COLORS.faint, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 9.5, color: COLORS.faint, lineHeight: 1.5 }}>
         Setup, models and budgets are per-project. Scores are per-prompt — private datasets are not comparable
         across prompts.
       </div>

@@ -255,7 +255,7 @@ export function SetupTab({
         </div>
         <div style={{ fontSize: 11, color: COLORS.faint, marginTop: 6 }}>
           No personal API key saved — using org credentials (mock). Add yours in{" "}
-          <Link href="/settings" style={{ color: COLORS.accent }}>
+          <Link href="/settings" style={{ color: COLORS.muted, textDecoration: "underline dotted" }}>
             Global settings
           </Link>
           .
