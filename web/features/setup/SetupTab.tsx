@@ -4,7 +4,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Lock, Zap } from "lucide-react";
+import { AlertTriangle, Lock, RotateCw, Zap } from "lucide-react";
 import { Btn, COLORS } from "@/shared/ui";
 import { EstimateTable, fmt$, fmtK, runsApi } from "@/features/runs";
 import { CycleEndedCard, CycleLog, cycleApi } from "@/features/cycle";
@@ -289,6 +289,7 @@ export function SetupTab({
         <div>
           {startError && <div style={{ fontSize: 11.5, color: COLORS.bad, marginBottom: 8 }}>{startError}</div>}
           <Btn disabled={starting || anyCycleActive} onClick={startCycle}>
+            <RotateCw size={12} />
             {starting ? "Starting…" : `Start cycle on "${promptName}"`}
           </Btn>
         </div>

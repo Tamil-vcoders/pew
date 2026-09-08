@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Archive, ArchiveRestore, LogOut, Menu, Play, Settings, X } from "lucide-react";
+import { Archive, ArchiveRestore, GitBranch, LogOut, Menu, Play, Settings, X } from "lucide-react";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { useAuth } from "@/features/auth/useAuth";
 import { CycleStatusChip } from "@/features/cycle";
@@ -125,6 +125,7 @@ function HeaderActivePromptActions() {
           padding: "4px 8px",
         }}
       >
+        <GitBranch size={11} />
         v{header.latestVersion}
         {header.isDirty ? " (unsaved)" : ""}
       </div>

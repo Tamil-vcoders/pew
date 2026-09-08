@@ -2,7 +2,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Folder, Plus } from "lucide-react";
+import { FileText, Folder, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { capabilitiesFor, type Role } from "@/shared/rbac/permissions";
 import { COLORS } from "@/shared/ui/tokens";
@@ -70,7 +70,7 @@ function ProjectRow({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 4px" }}>
-        <Folder size={12} color={COLORS.faint} />
+        <Folder size={12} color={COLORS.accent} />
         {can.settings ? (
           <input
             value={nameDraft}
@@ -113,13 +113,19 @@ function ProjectRow({
             display: "flex",
             alignItems: "flex-start",
             gap: 6,
-            padding: "7px 8px 7px 20px",
+            margin: "0 4px",
+            padding: "7px 8px 7px 16px",
+            borderRadius: 8,
             background: prompt.id === activePromptId ? COLORS.accentDim : "transparent",
             color: prompt.archived ? COLORS.faint : COLORS.text,
             textDecoration: prompt.archived ? "line-through" : "none",
           }}
         >
-          <FileText size={12} color={COLORS.faint} style={{ marginTop: 2, flexShrink: 0 }} />
+          <FileText
+            size={12}
+            color={prompt.id === activePromptId ? COLORS.accent : COLORS.faint}
+            style={{ marginTop: 2, flexShrink: 0 }}
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: 12, fontWeight: 500 }}>{prompt.name}</span>
             {prompt.id === activePromptId && (
@@ -166,13 +172,20 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, width: "100%" }}>
       <div style={{ display: "flex", gap: 6 }}>
-        <input
-          placeholder="name or tag…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search prompts by name or tag"
-          style={{ flex: 1 }}
-        />
+        <div style={{ position: "relative", flex: 1 }}>
+          <Search
+            size={12}
+            color={COLORS.faint}
+            style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+          />
+          <input
+            placeholder="name or tag…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search prompts by name or tag"
+            style={{ width: "100%", paddingLeft: 24 }}
+          />
+        </div>
         {can.settings && (
           <button
             title="New project"
@@ -180,7 +193,7 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
             onClick={createProject}
             style={{ display: "flex", color: COLORS.muted, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, cursor: "pointer", padding: 5 }}
           >
-            <Plus size={13} />
+            <Folder size={13} />
           </button>
         )}
       </div>
@@ -211,7 +224,8 @@ export function ProjectTree({ role, activePromptId }: { role: Role | null; activ
         show archived
       </label>
       <div style={{ fontSize: 10, color: COLORS.faint, lineHeight: 1.5 }}>
-        Setup, models and budgets are per-project. Scores are per-prompt — private datasets.
+        Setup, models and budgets are per-project. Scores are per-prompt — private datasets are not comparable
+        across prompts.
       </div>
     </div>
   );

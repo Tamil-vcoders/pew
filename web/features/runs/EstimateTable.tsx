@@ -7,6 +7,10 @@ export const fmtK = (v: number) => (v >= 1000 ? (v / 1000).toFixed(1) + "k" : St
 const GRID = "1.4fr 1fr .8fr .8fr .7fr";
 
 export function EstimateTable({ estimate }: { estimate: Estimate }) {
+  // A Suggestions row only ever appears in the 3-row cycle-iteration estimate (opted into via
+  // runsApi.estimate's nSug param) -- a plain "Run once" never drafts suggestions, so "Per
+  // run" only fits the 2-row shape.
+  const isCycleEstimate = estimate.rows.some((r) => r.stage === "Suggestions");
   return (
     <div style={{ border: `0.5px solid ${COLORS.border}`, borderRadius: 8, overflow: "hidden" }}>
       <div
@@ -44,7 +48,9 @@ export function EstimateTable({ estimate }: { estimate: Estimate }) {
           fontFamily: "ui-monospace, monospace",
         }}
       >
-        <span style={{ fontFamily: "Inter, sans-serif" }}>Per run ({estimate.nCases} cases)</span>
+        <span style={{ fontFamily: "Inter, sans-serif" }}>
+          {isCycleEstimate ? "Per iteration" : "Per run"} ({estimate.nCases} cases)
+        </span>
         <span>—</span>
         <span>{fmtK(estimate.totalIn)}</span>
         <span>{fmtK(estimate.totalOut)}</span>

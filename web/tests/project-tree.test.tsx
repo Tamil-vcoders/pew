@@ -106,7 +106,11 @@ describe("ProjectTree", () => {
 
   it("shows the per-project/per-prompt scoping caption at the bottom", () => {
     render(<ProjectTree role="contributor" activePromptId={null} />);
-    expect(screen.getByText(/Setup, models and budgets are per-project/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Setup, models and budgets are per-project. Scores are per-prompt — private datasets are not comparable across prompts.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("marks the currently open prompt with a 'Currently open' indicator, and no other prompt", () => {
